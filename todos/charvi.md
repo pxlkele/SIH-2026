@@ -1,6 +1,7 @@
 # Charvi — To-Do
 
 **Role:** Frontend — React + shadcn/ui + Tailwind, deployed to Vercel
+## To make a dynamic interactive frontend 
 
 ## Core UI
 - [ ] App scaffold: React + shadcn/ui + Tailwind
@@ -28,3 +29,5 @@ https://www.awwwards.com/inspiration/home-page-carousel-field-day-sound
 https://www.awwwards.com/awwwards/collections/image-gallery-and-slideshows/
 https://dribbble.com/search/carousel
 https://www.vev.design/blog/web-carousel-design/
+
+
