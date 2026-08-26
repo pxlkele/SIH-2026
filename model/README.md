@@ -1,7 +1,12 @@
 # Kalman fusion model — SIH26168
 
-Owner: **Palak**. Fuses raw IMU + GPS (per the locked `../data_schema.md`) into
-a corrected 2D path for dead reckoning through GPS gaps.
+**Ownership:**
+- **Angad** — the state-space filter itself (`kalman.py`, `frames.py`)
+- **Palak** — tuning on real data, inference-serving API on top, demo
+
+Fuses raw IMU + GPS (per the locked `../data_schema.md`) into a corrected 2D
+path for dead reckoning through GPS gaps. The first cut in this folder was
+scaffolded by Palak to unblock the pipeline — Angad may refactor freely.
 
 ## Design (first cut)
 
