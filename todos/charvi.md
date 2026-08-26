@@ -22,3 +22,9 @@
 - [ ] Deploy to Vercel
 - [ ] Test end-to-end against real backend in venue-like network conditions
 - [ ] Sanity-check the demo flow matches the locked demo script
+
+## Websites to check out for inspiration
+https://www.awwwards.com/inspiration/home-page-carousel-field-day-sound
+https://www.awwwards.com/awwwards/collections/image-gallery-and-slideshows/
+https://dribbble.com/search/carousel
+https://www.vev.design/blog/web-carousel-design/
