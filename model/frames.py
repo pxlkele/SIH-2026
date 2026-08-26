@@ -46,11 +46,12 @@ def integrate_heading(heading_rad: float, gyro_z: float, dt: float) -> float:
 def device_accel_to_world(accel_x: float, accel_y: float, heading_rad: float) -> tuple[float, float]:
     """Rotate horizontal device-frame acceleration to world-frame (E, N).
 
-    heading_rad is measured East-of-North (standard nav convention).
+    Body frame: +x forward, +y right. Heading = East-of-North (compass).
+    forward_world = (sin θ,  cos θ);  right_world = (cos θ, -sin θ).
     """
     c, s = math.cos(heading_rad), math.sin(heading_rad)
-    east = accel_x * c - accel_y * s
-    north = accel_x * s + accel_y * c
+    east = accel_x * s + accel_y * c
+    north = accel_x * c - accel_y * s
     return east, north
 
 
