@@ -44,7 +44,10 @@ model/
 ├── frames.py            # lat/lon <-> local ENU; heading integration; body->world accel
 ├── kalman.py            # linear KF: predict / update_gps
 ├── ingest.py            # schema-conformant CSV reader (preserves GPS nulls)
-├── run_on_log.py        # end-to-end: log CSV -> raw + corrected path CSVs
+├── stepper.py           # SessionStepper — stateful, one sample in / one result out
+├── run_on_log.py        # batch runner (drives SessionStepper over a CSV log)
+├── serve_stdio.py       # streaming server — JSON-per-line stdio, spawn per session
+├── smoke_stdio.py       # asserts stream output == batch output on the synth log
 ├── evaluate.py          # scores fused path vs. ground truth by phase
 ├── synth/
 │   ├── generate_log.py  # synthetic 60s scenario w/ 20s GPS-loss window
@@ -55,14 +58,70 @@ model/
     └── corrected_path.csv     # fused position at every IMU tick
 ```
 
+Batch and streaming share the exact same fusion logic — both drive
+`SessionStepper.step()`. `smoke_stdio.py` asserts they produce identical
+output on the synth log.
+
 ## Run it
 
 ```bash
 pip install -r requirements.txt
 python synth/generate_log.py                        # (once) make synth data
-python run_on_log.py synth/synth_log.csv            # produces output/*.csv
+python run_on_log.py synth/synth_log.csv            # batch → output/*.csv
 python evaluate.py                                  # scores vs. ground truth
+python smoke_stdio.py                               # streaming ↔ batch parity check
 ```
+
+## Inference API — contract for Aleena's backend
+
+Two ways to call the model from Node/Express:
+
+### 1. In-process Python (if backend adds a Python worker)
+
+```python
+from stepper import SessionStepper
+stepper = SessionStepper()               # one instance per user session
+result = stepper.step(sample)            # sample is model.ingest.Sample
+```
+
+### 2. Subprocess stdio (matches locked stack — Node spawns Python)
+
+Spawn once per session and stream:
+
+```
+child = spawn("python3", ["serve_stdio.py"], { cwd: "<repo>/model" })
+```
+
+**Request** — one JSON object per line on stdin:
+
+| Field            | Type       | Notes                                              |
+|------------------|------------|----------------------------------------------------|
+| `timestamp_ms`   | int        | required — Unix epoch ms                           |
+| `accel_x/y/z`    | number     | required — m/s², device frame                      |
+| `gyro_x/y/z`     | number     | required — rad/s, device frame                     |
+| `gps_lat`        | number\|null | optional — null when no GPS fix                  |
+| `gps_lon`        | number\|null | optional                                         |
+| `gps_accuracy_m` | number\|null | optional — GPS reported error radius, metres     |
+
+**Response** — one JSON object per line on stdout:
+
+| Field          | Type          | Notes                                                       |
+|----------------|---------------|-------------------------------------------------------------|
+| `state`        | string        | `waiting_first_fix` / `waiting_second_fix` / `running`      |
+| `timestamp_ms` | int           | echoed from input                                           |
+| `lat`          | number\|null  | fused position — **null** until `state == "running"`        |
+| `lon`          | number\|null  | fused position                                              |
+| `heading_rad`  | number\|null  | current heading estimate, East-of-North                     |
+| `std_e_m`      | number\|null  | 1-σ position uncertainty (metres, East)                     |
+| `std_n_m`      | number\|null  | 1-σ position uncertainty (metres, North)                    |
+| `gps_used`     | bool          | whether this input sample contained a GPS fix consumed      |
+
+On a bad input line the server writes `{"error": "...", "line_no": N}` and
+keeps running — one malformed row does not kill the session.
+
+**Session semantics:** each subprocess = one user session. Warm-start /
+state persistence between samples happens naturally because the process
+holds the filter state. To reset: restart the process.
 
 ## Current numbers (synthetic 60s, 20s GPS-loss window)
 
@@ -81,6 +140,5 @@ numbers on Raga's real car log.
 - Swap `synth/synth_log.csv` for Raga's real car log when available; re-tune
   `accel_process_std` if drift during real outages grows.
 - Add IMU bias state if the real log shows measurable accelerometer drift.
-- Wrap `run_on_log.py`'s inner loop as a **streaming stepper** so Aleena's
-  backend can feed one sample at a time over WebSocket (this is the
-  inference-serving API in `todos/palak.md`).
+- Aleena wires `serve_stdio.py` behind the WebSocket endpoint (spawn one
+  process per socket connection, pipe JSON both ways).

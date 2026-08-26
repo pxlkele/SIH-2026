@@ -1,13 +1,16 @@
-"""End-to-end: read a sensor CSV log, run the Kalman filter, dump two paths.
+"""Batch runner: read a sensor CSV log, drive the SessionStepper, dump two paths.
 
 Outputs:
   output/raw_gps_path.csv       — raw GPS points only (drops null rows)
-  output/corrected_path.csv     — fused position at every IMU timestep
-                                  (this is what the map should draw for the
-                                  "raw vs. corrected" wow moment)
+  output/corrected_path.csv     — fused position at every step where the
+                                  session is RUNNING (this is what the map
+                                  draws for the raw-vs-corrected wow moment)
 
 Usage:
   python run_on_log.py <input.csv> [--outdir output]
+
+Batch and streaming share the exact same fusion logic — they both drive
+SessionStepper.step(). This file just handles file I/O around it.
 """
 
 from __future__ import annotations
@@ -16,20 +19,14 @@ import argparse
 import csv
 from pathlib import Path
 
-from frames import ENUOrigin, device_accel_to_world, en_to_latlon, integrate_heading, latlon_to_en
 from ingest import Sample, read_log
-from kalman import KalmanConfig, KalmanFilter2D
+from stepper import SessionState, SessionStepper
 
 
 def run(input_path: Path, outdir: Path) -> dict:
     outdir.mkdir(parents=True, exist_ok=True)
 
-    kf = KalmanFilter2D(KalmanConfig())
-    origin: ENUOrigin | None = None
-    heading = 0.0
-    last_ts_ms: int | None = None
-    first_fix: tuple[int, float, float] | None = None  # (ts_ms, east, north)
-
+    stepper = SessionStepper()
     raw_rows: list[dict] = []
     corrected_rows: list[dict] = []
 
@@ -38,51 +35,20 @@ def run(input_path: Path, outdir: Path) -> dict:
 
     for s in read_log(input_path):
         imu_samples += 1
-
-        if origin is None:
-            # Wait for first GPS fix to set the tangent-plane origin.
-            if not s.has_gps:
-                continue
-            origin = ENUOrigin(lat_deg=s.gps_lat, lon_deg=s.gps_lon)
-            first_fix = (s.timestamp_ms, 0.0, 0.0)
-            last_ts_ms = s.timestamp_ms
-            raw_rows.append(_raw_row(s))
-            gps_fixes += 1
-            # Don't init the KF yet — wait for a second GPS fix so we can
-            # bootstrap an initial velocity from the position delta.
-            continue
-
-        if not kf.initialised:
-            if s.has_gps:
-                assert first_fix is not None
-                east_m, north_m = latlon_to_en(s.gps_lat, s.gps_lon, origin)
-                dt = (s.timestamp_ms - first_fix[0]) / 1000.0
-                if dt > 0:
-                    ve = (east_m - first_fix[1]) / dt
-                    vn = (north_m - first_fix[2]) / dt
-                    kf.initialise(east_m, north_m, ve=ve, vn=vn)
-                    last_ts_ms = s.timestamp_ms
-                    _record(corrected_rows, s.timestamp_ms, origin, kf, heading)
-                    raw_rows.append(_raw_row(s))
-                    gps_fixes += 1
-            continue
-
-        dt = max(0.0, (s.timestamp_ms - last_ts_ms) / 1000.0)
-        last_ts_ms = s.timestamp_ms
-
-        heading = integrate_heading(heading, s.gyro_z, dt)
-        a_east, a_north = device_accel_to_world(s.accel_x, s.accel_y, heading)
-
-        kf.predict(dt=dt, accel_e=a_east, accel_n=a_north)
-
         if s.has_gps:
-            east_m, north_m = latlon_to_en(s.gps_lat, s.gps_lon, origin)
-            acc = s.gps_accuracy_m if s.gps_accuracy_m is not None else 10.0
-            kf.update_gps(east_m, north_m, acc)
             raw_rows.append(_raw_row(s))
             gps_fixes += 1
 
-        _record(corrected_rows, s.timestamp_ms, origin, kf, heading)
+        result = stepper.step(s)
+        if result.state == SessionState.RUNNING.value and result.lat is not None:
+            corrected_rows.append({
+                "timestamp_ms": result.timestamp_ms,
+                "lat": result.lat,
+                "lon": result.lon,
+                "std_e_m": result.std_e_m,
+                "std_n_m": result.std_n_m,
+                "heading_rad": result.heading_rad,
+            })
 
     _write_csv(outdir / "raw_gps_path.csv",
                ["timestamp_ms", "lat", "lon", "accuracy_m"], raw_rows)
@@ -96,21 +62,6 @@ def run(input_path: Path, outdir: Path) -> dict:
         "corrected_points": len(corrected_rows),
         "raw_points": len(raw_rows),
     }
-
-
-def _record(rows: list[dict], ts_ms: int, origin: ENUOrigin,
-            kf: KalmanFilter2D, heading: float) -> None:
-    east, north = kf.position()
-    lat, lon = en_to_latlon(east, north, origin)
-    std_e, std_n = kf.position_std()
-    rows.append({
-        "timestamp_ms": ts_ms,
-        "lat": lat,
-        "lon": lon,
-        "std_e_m": std_e,
-        "std_n_m": std_n,
-        "heading_rad": heading,
-    })
 
 
 def _raw_row(s: Sample) -> dict:
