@@ -33,10 +33,10 @@ Optional but useful:
 - The Kalman filter itself — already in `model/`. Just spawn `serve_stdio.py`; parity with batch is proven by `model/smoke_stdio.py`.
 
 ## Ingestion
-- [ ] Define + agree the **live-ingestion schema** with Angad + Palak (blocker for whole team)
-- [ ] WebSocket / Socket.io endpoint that accepts the live sensor stream
-- [ ] Endpoint that accepts a replayed CSV log conforming to `data_schema.md` (fallback path for Charvi's UI)
-- [ ] Validate incoming samples; reject malformed rows without killing the stream
+- [x] Define + agree the **live-ingestion schema** with Angad + Palak (blocker for whole team) — locked in `data_schema.md`, matches `serve_stdio.py`'s contract exactly
+- [x] WebSocket / Socket.io endpoint that accepts the live sensor stream — `socket.on('sample', ...)` in `index.js`
+- [x] Endpoint that accepts a replayed CSV log conforming to `data_schema.md` (fallback path for Charvi's UI) — `POST /replay/:socketId`, raw CSV body, parsed with `csv-parser` (handles CRLF correctly, unlike a hand-rolled split)
+- [x] Validate incoming samples; reject malformed rows without killing the stream — `validateSample()`, emits `sample_rejected` back to the client instead of forwarding to the model
 
 ## Storage
 Pick one — recommendation is SQLite for the hackathon:
@@ -49,10 +49,11 @@ Then:
 - [ ] Session ID model so frontend can replay a specific run
 
 ## Model integration
-- [ ] Spawn `python3 model/serve_stdio.py` once per user session (one subprocess per socket connection)
-- [ ] Pipe incoming samples in as JSON-per-line on stdin; read fused results as JSON-per-line from stdout
-- [ ] Broadcast fused output back over WebSocket to the frontend
-- [ ] Full API contract is in `model/README.md :: Inference API`
+- [x] Spawn `model/serve_stdio.py` once per user session — `server/modelBridge.js`. Note: spawns `python`, not `python3` — on Windows `python3` is a broken Microsoft Store alias stub; override via `PYTHON_BIN` env var if a machine differs
+- [x] Pipe incoming samples in as JSON-per-line on stdin; read fused results as JSON-per-line from stdout — proven against `model/synth/synth_log.csv` in `server/scripts/smokeTestModelBridge.js` (3000/3000 lines, output matches batch runner to <1e-9°). Caught and fixed a CRLF-handling bug in CSV parsing along the way (Windows line endings silently nulled `gps_accuracy_m`)
+- [x] Wire `modelBridge` into a socket.io connection — one subprocess per socket in `index.js`, killed on disconnect (verified no orphaned Python processes after disconnect/replay in manual testing)
+- [x] Broadcast fused output back over WebSocket to the frontend — `fused_result` event, same event name for both the live path and the `/replay` path so the frontend doesn't need two code paths
+- [x] Full API contract is in `model/README.md :: Inference API`
 
 ## Deploy
 - [ ] Pick a backend host (open item) — factor in WebSocket support, subprocess/Python availability, and cold-start latency for the live demo
