@@ -11,7 +11,7 @@
 
 ### Backend Node deps (create `server/package.json`)
 Minimum:
-- [ ] `express` (^4)
+- [x] `express` (^5) — using v5, not v4; socket.io doesn't route through express so this is safe, just watch for v5's changed path-matching syntax (bare `*` wildcards, `req.query`) if adding HTTP routes later
 - [ ] `socket.io` (^4)
 - [ ] `cors` (^2)
 - [ ] `nodemon` (^3, dev-only)
