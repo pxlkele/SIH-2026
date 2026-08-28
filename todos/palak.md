@@ -13,10 +13,10 @@
 - [ ] Lock a headline demo-day number: mean drift through a real GPS-loss segment
 
 ## Inference-serving API
-- [ ] Define request/response schema for a single fusion step (input: IMU+GPS sample; output: corrected position + covariance)
-- [ ] Wrap Angad's filter as a **streaming stepper** so it can be driven one sample at a time (not just batch over a log)
-- [ ] Warm-start / state persistence between samples in the same session (session ID)
-- [ ] Streaming endpoint / process shape compatible with Aleena's WebSocket path (Node subprocess per the chosen stack)
+- [x] Define request/response schema for a single fusion step — documented in `model/README.md :: Inference API`
+- [x] Wrap Angad's filter as a **streaming stepper** — `model/stepper.py :: SessionStepper`
+- [x] Warm-start / state persistence between samples in the same session — subprocess-per-session holds state naturally
+- [x] Streaming endpoint / process shape compatible with Aleena's WebSocket path — `model/serve_stdio.py`; Aleena's `server/modelBridge.js` wires it end-to-end, smoke test proves parity with batch to <1e-9°
 
 ## Pitch narrative + demo ownership
 - [ ] Lock the story: problem → why classical Kalman → the "wow" moment (raw-GPS path vs. corrected path on the map)
@@ -25,6 +25,7 @@
 - [ ] Ensure fallback video exists and is queued before we walk in
 
 ## Coordination
-- [ ] Sign off on the live-ingestion schema with Angad + Aleena (blocker)
-- [ ] Sign off on backend hosting choice with Aleena (blocker)
-- [ ] Handshake with Angad on the model API surface (what `step(sample) -> position` looks like)
+- [x] Sign off on the live-ingestion schema with Angad + Aleena — locked in `data_schema.md`, Aleena's backend validates against it and forwards to `serve_stdio.py`
+- [ ] Sign off on backend hosting choice with Aleena (blocker) — must support WebSockets + Python subprocess; note Aleena spawns `python` not `python3`, override via `PYTHON_BIN`
+- [ ] Handshake with Angad on the model API surface — he still needs to confirm he's OK with the current filter or take it over
+- [ ] End-to-end integration test with Charvi's frontend once she has a map view — proves the whole live path before venue rehearsal
