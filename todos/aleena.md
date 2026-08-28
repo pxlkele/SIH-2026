@@ -55,6 +55,19 @@ Then:
 - [x] Broadcast fused output back over WebSocket to the frontend — `fused_result` event, same event name for both the live path and the `/replay` path so the frontend doesn't need two code paths
 - [x] Full API contract is in `model/README.md :: Inference API`
 
+## Tier 1 winner-tier features (Palak scoped)
+
+### Map-matching / road-snapping endpoint
+Charvi will render a third path layer that snaps the corrected trajectory to actual OSM road segments. Massive visual credibility win. Backend batches fused points and calls OSRM.
+
+- [ ] Buffer the last N `fused_result` points per session (suggest N = last ~5 seconds worth, i.e. ~250 samples at 50 Hz — but subsample to ~1 per 500ms before sending; OSRM doesn't want 50 Hz)
+- [ ] Every ~5 seconds, POST the subsampled buffer to **OSRM's map-matching endpoint** (public: `https://router.project-osrm.org/match/v1/driving/{coordinates}?geometries=geojson&overview=full`)
+- [ ] Parse the returned matched-path geometry (`matchings[0].geometry.coordinates`) into `[{lat, lon}, ...]`
+- [ ] Emit a `matched_path` socket.io event to the session with the array
+- [ ] Handle OSRM failure gracefully (no matches, rate limit) — just skip that batch, don't kill the session. Log at warn level.
+- [ ] Cache the last successful `matched_path` in the session so a late-arriving frontend can catch up on reconnect
+- [ ] *(Nice-to-have)* self-host OSRM in a Docker sidecar if public rate-limits bite during rehearsal — but public is fine for the demo itself
+
 ## Deploy
 - [ ] Pick a backend host (open item) — factor in WebSocket support, subprocess/Python availability, and cold-start latency for the live demo
 - [ ] Deploy backend + smoke-test against Charvi's Vercel frontend

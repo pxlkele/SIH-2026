@@ -29,3 +29,12 @@
 - [ ] Sign off on backend hosting choice with Aleena (blocker) — must support WebSockets + Python subprocess; note Aleena spawns `python` not `python3`, override via `PYTHON_BIN`
 - [ ] Handshake with Angad on the model API surface — he still needs to confirm he's OK with the current filter or take it over
 - [ ] End-to-end integration test with Charvi's frontend once she has a map view — proves the whole live path before venue rehearsal
+
+## Tier 1 winner-tier features (I scoped these — coordinate the rollout)
+- [ ] Kick off the four Tier 1 features with Charvi + Aleena (specs are in their todo files)
+  - Road-snapped path (Aleena backend endpoint + Charvi map layer)
+  - Confidence ellipse (Charvi, using existing `std_e_m` / `std_n_m` from `fused_result`)
+  - Dead-reckoning ON/OFF toggle (Charvi, pure client-side)
+  - Live drift counter HUD (Charvi, using `fused_result` + raw GPS)
+- [ ] *(Optional, upgrade for the ellipse)* Extend `StepResult` in `model/stepper.py` to include the full 2×2 position covariance sub-matrix (`cov_ee`, `cov_en`, `cov_nn`) — cheap, unlocks a properly rotated ellipse instead of axis-aligned. Requires touching `serve_stdio.py` docs and letting Aleena know she needs to pass the new fields through
+- [ ] Rehearse the pitch flow with the new visuals in place before the buffer days — the demo script may want minor updates to lean on the toggle / ellipse moments
