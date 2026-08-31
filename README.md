@@ -5,7 +5,8 @@
 
 A delivery rider on a scooter drops into the basement parking of a mall to hand off a quick-commerce order. Their phone's GPS blue dot freezes, then jumps 200 meters across the map. They miss the exit ramp, waste four minutes, and the order is late.This happens millions of times a day across Indian cities — in metro underground parking, road and rail tunnels, and the dense urban canyons of high-rise clusters. GNSS signals are inherently weak and easily blocked by structures, foliage, and interference. Most Indian vehicles — commercial trucks, older cars, and the crores of two-wheelers on the road — have no factory-fitted Inertial Navigation System (INS) to fall back on. They rely entirely on a smartphone in a dashboard mount, and consumer-grade smartphone sensors alone drift wildly within seconds of losing GPS.
 
-**Our goal:** 
+**Our goal:**
+
 Turn a standalone smartphone into an Intelligent Dead Reckoning system that seamlessly bridges GNSS outages — no vehicle hardware connection required — and snaps back to GNSS-aided tracking the instant signal returns.
 
 ---
@@ -45,11 +46,12 @@ We validate and demo against a concrete scenario: **underground/multi-level park
 
 | Role | Owner |
 |---|---|
-| Data collection & ground-truth | — |
-| ML / AI models | — |
-| Fusion engine | — |
-| Frontend / visualization | — |
-| Documentation | — |
+| Data collection & ground-truth | Raga |
+|Sensor fusion / Kalman filter engineer| |
+| ML / AI models | Palak |
+| Backend | Aleena |
+| Frontend / visualization |  |
+| Documentation | Aarushi |
 
 ---
 
