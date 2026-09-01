@@ -24,6 +24,8 @@ Turn a standalone smartphone into an Intelligent Dead Reckoning system that seam
 
 We use a **classical linear Kalman filter** as the core fusion engine — 2D state `[E, N, vE, vN]` in a local ENU tangent plane, with the IMU stream as the control input and GPS as the measurement update. Chosen over a learned fusion model because it gives us an interpretable, well-understood error model, predictable behaviour under noisy real-world sensor data, and — critically — deterministic on-device behaviour without a model runtime. Angad may promote to an EKF or add IMU bias state as real-log tuning demands.
 
+
+
 ---
 
 ## Anchor Use Case
@@ -66,3 +68,8 @@ We validate and demo against a concrete scenario: **underground/multi-level park
 
 - **Dead reckoning drift:** < 10% of distance traveled (e.g., < 100m drift over 1km GNSS-denied stretch at 60 km/h)
 - **GNSS+INS fusion update rate:** 10 Hz on smartphone; up to 200 Hz on edge-deployable engine with FOG-based IMU
+
+## Architecture Diagram 
+
+<img width="2720" height="2480" alt="idr_system_architecture" src="https://github.com/user-attachments/assets/f4a0faed-63cb-4034-8f18-71e3519e71b2" />
+

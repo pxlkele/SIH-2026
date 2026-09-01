@@ -46,6 +46,7 @@ model/
 ├── ingest.py            # schema-conformant CSV reader (preserves GPS nulls)
 ├── stepper.py           # SessionStepper — stateful, one sample in / one result out
 ├── run_on_log.py        # batch runner (drives SessionStepper over a CSV log)
+├── smoother.py          # post-run RTS backwards smoother (forward + backward pass)
 ├── serve_stdio.py       # streaming server — JSON-per-line stdio, spawn per session
 ├── smoke_stdio.py       # asserts stream output == batch output on the synth log
 ├── evaluate.py          # scores fused path vs. ground truth by phase
@@ -114,7 +115,29 @@ child = spawn("python3", ["serve_stdio.py"], { cwd: "<repo>/model" })
 | `heading_rad`  | number\|null  | current heading estimate, East-of-North                     |
 | `std_e_m`      | number\|null  | 1-σ position uncertainty (metres, East)                     |
 | `std_n_m`      | number\|null  | 1-σ position uncertainty (metres, North)                    |
+| `cov_ee`       | number\|null  | position covariance (m²) — East variance                    |
+| `cov_en`       | number\|null  | position covariance (m²) — East/North cross-term            |
+| `cov_nn`       | number\|null  | position covariance (m²) — North variance                   |
 | `gps_used`     | bool          | whether this input sample contained a GPS fix consumed      |
+
+**On the covariance fields:** `std_e_m` and `std_n_m` are just `sqrt(cov_ee)`
+and `sqrt(cov_nn)` — enough for an *axis-aligned* uncertainty ellipse. The
+full 2×2 covariance matrix `[[cov_ee, cov_en], [cov_en, cov_nn]]` lets you
+draw a *properly rotated* ellipse via eigendecomposition. In JS:
+
+```js
+// eigenvalues λ± of the 2x2 = principal axis lengths (variance form)
+const tr = cov_ee + cov_nn;
+const det = cov_ee * cov_nn - cov_en * cov_en;
+const disc = Math.sqrt(Math.max(0, tr * tr / 4 - det));
+const lambdaMajor = tr / 2 + disc;
+const lambdaMinor = tr / 2 - disc;
+// axis lengths in metres (2-sigma ellipse):
+const semiMajor = 2 * Math.sqrt(lambdaMajor);
+const semiMinor = 2 * Math.sqrt(lambdaMinor);
+// rotation: angle of the major eigenvector, from East toward North
+const rotationRad = Math.atan2(2 * cov_en, cov_ee - cov_nn) / 2;
+```
 
 On a bad input line the server writes `{"error": "...", "line_no": N}` and
 keeps running — one malformed row does not kill the session.
@@ -123,7 +146,19 @@ keeps running — one malformed row does not kill the session.
 state persistence between samples happens naturally because the process
 holds the filter state. To reset: restart the process.
 
-## Current numbers (synthetic 60s, 20s GPS-loss window)
+## Current numbers
+
+### Synthetic 60s scenario, 20s GPS-loss window
+
+With the current default `accel_process_std=2.0`:
+
+| Phase        | Fused (KF) mean err | Raw-GPS-interp mean err |
+|--------------|---------------------|--------------------------|
+| before loss  | 4.0 m               | 4.1 m                    |
+| **during loss** | **6.4 m**       | **11.9 m**               |
+| after loss   | 1.8 m               | 3.2 m                    |
+
+With `accel_process_std=0.5` (aggressive, only safe on clean synth data):
 
 | Phase        | Fused (KF) mean err | Raw-GPS-interp mean err |
 |--------------|---------------------|--------------------------|
@@ -131,14 +166,73 @@ holds the filter state. To reset: restart the process.
 | **during loss** | **1.5 m**       | **11.9 m**               |
 | after loss   | 1.3 m               | 3.2 m                    |
 
-The `during_loss` row is the pitch number and the map-comparison "wow moment".
-Note: synthetic scenario has no IMU bias and modest noise — expect looser
-numbers on Raga's real car log.
+The 1.5 m result shows the ceiling of what the filter can achieve on ideal
+data. The 6.4 m default is the same filter tuned to survive real-world IMU
+noise; it still beats raw-GPS-interp by ~2× through the outage.
+
+### Real drive (`data/real/ios_drive_2026-08-29.csv`, 2.5 min, iPhone SensorLog)
+With the default `accel_process_std=2.0` (tuned against real Core Motion IMU):
+
+| Metric | Value |
+|---|---|
+| Fused-path length | 408 m over 2.5 min |
+| Fused-vs-raw agreement at GPS fixes | mean **9.1 m**, max 32.5 m |
+| Mean 1-σ position uncertainty | 19.4 m |
+
+Real IMU is noisier than synth — the filter needs a higher `accel_process_std`
+to avoid over-trusting drift-prone IMU. Same knob, opposite direction as synth.
+
+### Tuning knob sweep (aug29 real drive)
+
+| `accel_process_std` | Path length (m) | Mean err vs raw GPS (m) |
+|---|---|---|
+| 0.5 (synth-tuned) | 912 | 27.2 |
+| 1.0 | 625 | 15.8 |
+| **2.0 (default)** | **408** | **9.1** |
+| 3.0 | 343 | 6.4 |
+| 5.0 | 307 | 4.4 |
+
+Higher `accel_process_std` = filter trusts GPS more, IMU less — better on
+noisy real data but starves dead-reckoning during actual GPS outages. 2.0
+is the current best balance. Retune once we have a real GPS-outage segment
+(tunnel, basement).
+
+The synthetic `during_loss` row is still the pitch number and the map-comparison
+"wow moment". Real-drive numbers are the honest engineering baseline.
+
+## Post-run RTS smoother (`smoother.py`)
+
+Same Kalman math, run twice: once forward through the log, then backward.
+Each smoothed state uses information from ALL samples — past AND future.
+Result: significantly tighter trajectory during GPS-outage segments,
+because the smoother knows where GPS re-acquired at the *end* of the
+outage and blends that backward into the outage window.
+
+```bash
+python smoother.py synth/synth_log.csv output/smoothed_path.csv
+python smoother.py ../data/real/ios_drive_2026-08-29.csv \
+                   ../data/real/output/aug29/smoothed_path.csv
+```
+
+### Online filter vs. RTS smoother on the synth outage
+
+| Phase          | Online (KF, std=2.0) | Smoothed (RTS) | Improvement |
+|----------------|----------------------|----------------|-------------|
+| before loss    | 4.03 m               | **0.59 m**     | 7×          |
+| **during loss** | **6.35 m** (max 10.1) | **1.39 m** (max 1.5) | **~5×**    |
+| after loss     | 1.83 m               | **0.78 m**     | 2×          |
+| overall        | 4.26 m               | **0.91 m**     | 5×          |
+
+The smoother is only useful **post-run** (needs the whole log). Live demo
+still uses the online `SessionStepper`. RTS is for the playback moment —
+"here's the definitive trajectory."
 
 ## What's next
 
 - Swap `synth/synth_log.csv` for Raga's real car log when available; re-tune
   `accel_process_std` if drift during real outages grows.
+- Get a real drive log with an actual GPS-outage segment (tunnel, basement)
+  so the smoother has something dramatic to demo against.
 - Add IMU bias state if the real log shows measurable accelerometer drift.
 - Aleena wires `serve_stdio.py` behind the WebSocket endpoint (spawn one
   process per socket connection, pipe JSON both ways).

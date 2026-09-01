@@ -6,11 +6,12 @@
 > Palak stays close to the model via tuning + API + demo ownership.
 
 ## Tuning on real data
-- [x] Adapter for real device logs → schema-conformant CSV — `model/adapters/ios_sensorlog.py` (iOS SensorLog format). First converted file lives at `data/real/ios_test_2026-08-24.csv`. Pipeline runs cleanly on it.
-- [ ] **Get a longer drive log from Raga.** The 2026-08-24 capture is only 1.5 s / 45 IMU samples / 2 GPS fixes — enough to prove the ingestion path, not enough to tune.
-- [ ] Once a real drive log lands: run it through the filter, check the raw-vs-corrected drift number
-- [ ] Re-tune `accel_process_std` (and `min_gps_std_m` if needed) — see `model/README.md :: Tuning knobs`
-- [ ] If real IMU shows visible drift, work with Angad to add bias state or a stationary-start calibration
+- [x] Adapter for real device logs → schema-conformant CSV — `model/adapters/ios_sensorlog.py`. **Uses iOS Core Motion (gravity-removed accel, bias-compensated gyro)** — raw sensors caused ~70 m drift on real data because gravity leaks into horizontal axes when the phone tilts.
+- [x] Three real captures converted: `data/real/ios_test_2026-08-24.csv`, `ios_drive_2026-08-24.csv`, `ios_drive_2026-08-29.csv` (~2.5 min drive, 52 GPS fixes — first tuning-grade log).
+- [x] First real-data drift number: 9.1 m mean fused-vs-raw agreement on the 2.5-min drive with tuned defaults.
+- [x] Re-tune `accel_process_std` — swept 0.5 → 5.0; **default is now 2.0** (was 0.5, tuned for synth only). Full sweep + rationale in `model/README.md`.
+- [ ] **Get a drive log that actually includes a GPS-outage segment** (tunnel, basement parking, underpass). All current logs have healthy GPS throughout, so we can't measure real dead-reckoning behaviour yet. This is the biggest gap.
+- [ ] If real IMU shows visible drift beyond the outage, work with Angad to add bias state or a stationary-start calibration
 - [ ] Reference IMU datasets (RIDI / RoNIN) if extra tuning data is needed
 - [ ] Lock a headline demo-day number: mean drift through a real GPS-loss segment
 
@@ -63,9 +64,10 @@ Practical wrinkle: **our current demo architecture streams sensor data over the 
 
 ## Tier 1 winner-tier features (I scoped these — coordinate the rollout)
 - [ ] Kick off the four Tier 1 features with Charvi + Aleena (specs are in their todo files)
-  - Road-snapped path (Aleena backend endpoint + Charvi map layer)
+  - Road-snapped path — Aleena backend **done** (`server/mapMatch.js`); Charvi still needs to consume the `matched_path` event
   - Confidence ellipse (Charvi, using existing `std_e_m` / `std_n_m` from `fused_result`)
   - Dead-reckoning ON/OFF toggle (Charvi, pure client-side)
   - Live drift counter HUD (Charvi, using `fused_result` + raw GPS)
-- [ ] *(Optional, upgrade for the ellipse)* Extend `StepResult` in `model/stepper.py` to include the full 2×2 position covariance sub-matrix (`cov_ee`, `cov_en`, `cov_nn`) — cheap, unlocks a properly rotated ellipse instead of axis-aligned. Requires touching `serve_stdio.py` docs and letting Aleena know she needs to pass the new fields through
-- [ ] Rehearse the pitch flow with the new visuals in place before the buffer days — the demo script may want minor updates to lean on the toggle / ellipse moments
+- [x] Extend `StepResult` with full 2×2 position covariance (`cov_ee`, `cov_en`, `cov_nn`) — unlocks Charvi's rotated ellipse. Wire-format documented in `model/README.md :: Inference API` with a JS eigendecomposition snippet. **Aleena's `modelBridge.js` needs no code change** — it forwards the whole `StepResult` object as-is to `fused_result`, so the new fields flow through automatically.
+- [x] **Post-run RTS backwards smoother** (`model/smoother.py`) — a bonus depth feature: same Kalman math run forward then backward, blended optimally. **5× improvement through the synth outage (1.39 m vs 6.35 m mean)**. Spec for the split-screen + playback layer added to Charvi's todo. Backend needs a small `/session/:id/smoothed` endpoint from Aleena (spec added to her todo).
+- [ ] Rehearse the pitch flow with the new visuals in place before the buffer days — the demo script may want minor updates to lean on the toggle / ellipse / smoothed-playback moments

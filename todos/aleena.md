@@ -62,6 +62,13 @@ Then:
 
 ## Tier 1 winner-tier features (Palak scoped)
 
+### Post-run RTS-smoothed trajectory endpoint (new, small)
+The model now has a `smoother.py` that runs an RTS backward pass over a completed session's samples — result is ~5× tighter than the live filter through GPS outages (**1.39 m mean vs 6.35 m** on the synth 20-s outage). Charvi wants to render this as a third path layer after a session ends.
+
+- [ ] Add `GET /session/:id/smoothed` — reads the raw sample CSV for that session out of SQLite (or wherever), pipes it through `python model/smoother.py <in> <out>`, returns the smoothed CSV or a JSON array of `{lat, lon, timestamp_ms, std_e_m, std_n_m, cov_ee, cov_en, cov_nn}` for direct frontend consumption
+- [ ] Should be async — a long session might take a second or two to smooth. `202 Accepted` + polling, or just block; either works for the demo
+- [ ] No changes to live/replay paths needed — this is strictly post-run
+
 ### Map-matching / road-snapping endpoint
 Charvi will render a third path layer that snaps the corrected trajectory to actual OSM road segments. Massive visual credibility win. Backend batches fused points and calls OSRM.
 

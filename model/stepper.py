@@ -34,8 +34,12 @@ class StepResult:
     lat: float | None                # fused position, None until RUNNING
     lon: float | None
     heading_rad: float | None
-    std_e_m: float | None            # position uncertainty (1-sigma), metres
-    std_n_m: float | None
+    std_e_m: float | None            # position uncertainty (1-sigma), metres — East
+    std_n_m: float | None            # position uncertainty (1-sigma), metres — North
+    cov_ee: float | None             # position covariance sub-matrix (m^2). Full 2x2 is
+    cov_en: float | None             #   [[cov_ee, cov_en],
+    cov_nn: float | None             #    [cov_en, cov_nn]] — eigendecompose for a
+                                     #   properly rotated confidence ellipse.
     gps_used: bool                   # did this sample contain a GPS fix consumed by the filter
 
     def to_dict(self) -> dict:
@@ -89,6 +93,11 @@ class SessionStepper:
         ve = (east_m - self._first_fix[1]) / dt
         vn = (north_m - self._first_fix[2]) / dt
         self._kf.initialise(east_m, north_m, ve=ve, vn=vn)
+        # (Heading is NOT bootstrapped from ve/vn here — GPS noise on a
+        # 1-second baseline gives ~20-30° heading error which propagates
+        # through every accel rotation until GPS updates hammer it down.
+        # We let the filter converge heading naturally via repeated GPS
+        # updates. Core Motion's bias-compensated gyro handles this fine.)
         self._last_ts_ms = s.timestamp_ms
         self._state = SessionState.RUNNING
         return self._emit(s.timestamp_ms, gps_used=True)
@@ -115,6 +124,7 @@ class SessionStepper:
         east, north = self._kf.position()
         lat, lon = en_to_latlon(east, north, self._origin)
         std_e, std_n = self._kf.position_std()
+        cov_ee, cov_en, cov_nn = self._kf.position_cov()
         return StepResult(
             state=self._state.value,
             timestamp_ms=ts_ms,
@@ -123,6 +133,9 @@ class SessionStepper:
             heading_rad=self._heading,
             std_e_m=std_e,
             std_n_m=std_n,
+            cov_ee=cov_ee,
+            cov_en=cov_en,
+            cov_nn=cov_nn,
             gps_used=gps_used,
         )
 
@@ -133,5 +146,6 @@ def _idle(ts_ms: int, state: SessionState, *, gps_used: bool = False) -> StepRes
         timestamp_ms=ts_ms,
         lat=None, lon=None, heading_rad=None,
         std_e_m=None, std_n_m=None,
+        cov_ee=None, cov_en=None, cov_nn=None,
         gps_used=gps_used,
     )
