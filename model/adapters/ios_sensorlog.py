@@ -4,19 +4,23 @@ SensorLog (and similar iOS logging apps) produce very wide CSVs: one row per
 IMU sample with every recent value forward-filled. We need:
 
   * `timestamp_ms`     — Unix ms       ← `locationTimestamp_since1970` (fallback: `loggingTime`)
-  * `accel_x/y/z`      — m/s²           ← `accelerometerAccelerationX/Y/Z` (G, multiply by 9.80665)
-  * `gyro_x/y/z`       — rad/s          ← `gyroRotationX/Y/Z`
-  * `gps_lat/lon`      — nullable       ← `locationLatitude/Longitude(WGS84)`
-                                          null when `locationTimestamp_since1970`
-                                          did NOT change since the last row
-  * `gps_accuracy_m`   — nullable       ← `locationHorizontalAccuracy(m)`
-                                          null on the same rows as lat/lon
+  * `accel_x/y/z`      — m/s²           ← **prefer `motionUserAccelerationX/Y/Z(G)`** — Core Motion's
+                                          gravity-removed, sensor-fused user acceleration. Multiply by
+                                          9.80665. Fallback to raw `accelerometerAccelerationX/Y/Z(G)`
+                                          only if motion* isn't present.
+  * `gyro_x/y/z`       — rad/s          ← **prefer `motionRotationRateX/Y/Z(rad/s)`** — Core Motion's
+                                          bias-compensated rate. Fallback to raw `gyroRotationX/Y/Z`.
+  * `gps_lat/lon`      — nullable       ← `locationLatitude/Longitude(WGS84)`, null when
+                                          `locationTimestamp_since1970` did NOT change since the
+                                          last row (schema forbids forward-fill).
+  * `gps_accuracy_m`   — nullable       ← `locationHorizontalAccuracy(m)`, null on same rows as lat/lon,
+                                          also nulled on sentinel values (< 0 or > 500 m).
 
-iOS reports GPS at ~1 Hz but the log samples IMU faster; between fixes the log
-repeats the last GPS row. Our schema says gaps must be nulled (no forward-fill)
-so downstream can tell real fixes from repeats. We detect a fresh fix by a
-change in `locationTimestamp_since1970`. Also drop the first row's GPS if
-`locationHorizontalAccuracy` is a sentinel (-1 or huge).
+Why Core Motion fields: raw accelerometer includes gravity, so any tilt in
+the phone leaks gravity into the horizontal axes and the Kalman filter
+integrates it as bogus motion. Raw gyro has bias that drifts heading.
+Core Motion's sensor fusion handles both. We saw drift of 70+ metres on
+real drive logs using raw fields; motion* fields fix this.
 
 Usage:
   python -m model.adapters.ios_sensorlog <input.csv> <output.csv>
@@ -48,10 +52,15 @@ def convert(src: Path, dst: Path) -> dict:
 
     _require_columns(rows[0].keys(), src)
 
+    have_motion_accel = "motionUserAccelerationX(G)" in rows[0]
+    have_motion_gyro = "motionRotationRateX(rad/s)" in rows[0]
+
     out_rows: list[list] = []
     last_loc_ts = None
     gps_fixes = 0
     imu_samples = 0
+    accel_source = "motion" if have_motion_accel else "raw"
+    gyro_source = "motion" if have_motion_gyro else "raw"
 
     for r in rows:
         # Timestamp: prefer location's since-1970 seconds when present; else the
@@ -64,13 +73,24 @@ def convert(src: Path, dst: Path) -> dict:
         if ts_ms is None:
             continue
 
-        # Accel is in Gs on iOS. Convert to m/s².
-        ax = _to_float(r.get("accelerometerAccelerationX(G)"))
-        ay = _to_float(r.get("accelerometerAccelerationY(G)"))
-        az = _to_float(r.get("accelerometerAccelerationZ(G)"))
-        gx = _to_float(r.get("gyroRotationX(rad/s)"))
-        gy = _to_float(r.get("gyroRotationY(rad/s)"))
-        gz = _to_float(r.get("gyroRotationZ(rad/s)"))
+        # Accel: prefer Core Motion (gravity-removed) over raw. Both are in Gs, convert to m/s².
+        if have_motion_accel:
+            ax = _to_float(r.get("motionUserAccelerationX(G)"))
+            ay = _to_float(r.get("motionUserAccelerationY(G)"))
+            az = _to_float(r.get("motionUserAccelerationZ(G)"))
+        else:
+            ax = _to_float(r.get("accelerometerAccelerationX(G)"))
+            ay = _to_float(r.get("accelerometerAccelerationY(G)"))
+            az = _to_float(r.get("accelerometerAccelerationZ(G)"))
+        # Gyro: prefer Core Motion (bias-compensated) over raw. Both in rad/s.
+        if have_motion_gyro:
+            gx = _to_float(r.get("motionRotationRateX(rad/s)"))
+            gy = _to_float(r.get("motionRotationRateY(rad/s)"))
+            gz = _to_float(r.get("motionRotationRateZ(rad/s)"))
+        else:
+            gx = _to_float(r.get("gyroRotationX(rad/s)"))
+            gy = _to_float(r.get("gyroRotationY(rad/s)"))
+            gz = _to_float(r.get("gyroRotationZ(rad/s)"))
         if None in (ax, ay, az, gx, gy, gz):
             continue
 
@@ -111,6 +131,8 @@ def convert(src: Path, dst: Path) -> dict:
         "output_rows": len(out_rows),
         "gps_fixes": gps_fixes,
         "imu_samples": imu_samples,
+        "accel_source": accel_source,
+        "gyro_source": gyro_source,
     }
 
 
@@ -165,6 +187,8 @@ def main():
     print(f"output rows:  {stats['output_rows']}  (schema-conformant)")
     print(f"IMU samples:  {stats['imu_samples']}")
     print(f"GPS fixes:    {stats['gps_fixes']}  (fresh fixes only, forward-fills nulled)")
+    print(f"accel source: {stats['accel_source']}  (motion = Core Motion, gravity-removed)")
+    print(f"gyro source:  {stats['gyro_source']}   (motion = Core Motion, bias-compensated)")
     print(f"wrote:        {args.output}")
 
 

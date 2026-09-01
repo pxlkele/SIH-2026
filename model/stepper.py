@@ -89,6 +89,11 @@ class SessionStepper:
         ve = (east_m - self._first_fix[1]) / dt
         vn = (north_m - self._first_fix[2]) / dt
         self._kf.initialise(east_m, north_m, ve=ve, vn=vn)
+        # (Heading is NOT bootstrapped from ve/vn here — GPS noise on a
+        # 1-second baseline gives ~20-30° heading error which propagates
+        # through every accel rotation until GPS updates hammer it down.
+        # We let the filter converge heading naturally via repeated GPS
+        # updates. Core Motion's bias-compensated gyro handles this fine.)
         self._last_ts_ms = s.timestamp_ms
         self._state = SessionState.RUNNING
         return self._emit(s.timestamp_ms, gps_used=True)

@@ -26,8 +26,22 @@ forward-filled). Aleena's backend accepts these directly.
   iOS export
 - **Adapter:** `model/adapters/ios_sensorlog.py`
 - **Duration:** ~1.5 seconds, 45 IMU samples, 2 GPS fixes
-- **Purpose:** proves the iOS-format ingestion path end-to-end. **Too short
-  for meaningful tuning** — replace with a full drive log when available.
+- **Purpose:** proves the iOS-format ingestion path end-to-end. Too short
+  for meaningful tuning.
+
+### `real/ios_drive_2026-08-24.csv`
+- **Source:** `2026-08-24_20_49_48_my_iOS_device.csv`
+- **Duration:** ~18 s, 739 IMU samples (~41 Hz), 7 GPS fixes
+- **Purpose:** short real drive. Bootstraps the filter but too little GPS to
+  meaningfully tune noise settings.
+
+### `real/ios_drive_2026-08-29.csv`
+- **Source:** `2026-08-29_10_35_46_my_iOS_device.csv`
+- **Duration:** ~150 s (2.5 min), 4663 IMU samples (~31 Hz), 52 GPS fixes
+- **Purpose:** **first tuning-grade real log.** Used to set the current default
+  `accel_process_std=2.0` — see `model/README.md` for the full sweep and numbers.
+- **Missing:** a real GPS-outage segment (tunnel/basement). The demo pitch
+  will need this before final tuning is locked.
 
 ## Adding a new real log
 

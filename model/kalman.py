@@ -22,7 +22,9 @@ import numpy as np
 class KalmanConfig:
     # Process noise: how much we trust the constant-velocity + IMU-control model.
     # Higher = filter reacts faster to GPS, drifts more between fixes.
-    accel_process_std: float = 0.5   # m/s^2, models un-modelled acceleration
+    # 2.0 is tuned against real iPhone Core Motion IMU (see model/README.md).
+    # Clean synth data can go as low as 0.5.
+    accel_process_std: float = 2.0   # m/s^2, models un-modelled acceleration
     # Initial state uncertainty
     init_pos_std: float = 10.0        # m
     init_vel_std: float = 2.0         # m/s

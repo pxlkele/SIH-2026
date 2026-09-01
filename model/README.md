@@ -123,7 +123,19 @@ keeps running — one malformed row does not kill the session.
 state persistence between samples happens naturally because the process
 holds the filter state. To reset: restart the process.
 
-## Current numbers (synthetic 60s, 20s GPS-loss window)
+## Current numbers
+
+### Synthetic 60s scenario, 20s GPS-loss window
+
+With the current default `accel_process_std=2.0`:
+
+| Phase        | Fused (KF) mean err | Raw-GPS-interp mean err |
+|--------------|---------------------|--------------------------|
+| before loss  | 4.0 m               | 4.1 m                    |
+| **during loss** | **6.4 m**       | **11.9 m**               |
+| after loss   | 1.8 m               | 3.2 m                    |
+
+With `accel_process_std=0.5` (aggressive, only safe on clean synth data):
 
 | Phase        | Fused (KF) mean err | Raw-GPS-interp mean err |
 |--------------|---------------------|--------------------------|
@@ -131,9 +143,39 @@ holds the filter state. To reset: restart the process.
 | **during loss** | **1.5 m**       | **11.9 m**               |
 | after loss   | 1.3 m               | 3.2 m                    |
 
-The `during_loss` row is the pitch number and the map-comparison "wow moment".
-Note: synthetic scenario has no IMU bias and modest noise — expect looser
-numbers on Raga's real car log.
+The 1.5 m result shows the ceiling of what the filter can achieve on ideal
+data. The 6.4 m default is the same filter tuned to survive real-world IMU
+noise; it still beats raw-GPS-interp by ~2× through the outage.
+
+### Real drive (`data/real/ios_drive_2026-08-29.csv`, 2.5 min, iPhone SensorLog)
+With the default `accel_process_std=2.0` (tuned against real Core Motion IMU):
+
+| Metric | Value |
+|---|---|
+| Fused-path length | 408 m over 2.5 min |
+| Fused-vs-raw agreement at GPS fixes | mean **9.1 m**, max 32.5 m |
+| Mean 1-σ position uncertainty | 19.4 m |
+
+Real IMU is noisier than synth — the filter needs a higher `accel_process_std`
+to avoid over-trusting drift-prone IMU. Same knob, opposite direction as synth.
+
+### Tuning knob sweep (aug29 real drive)
+
+| `accel_process_std` | Path length (m) | Mean err vs raw GPS (m) |
+|---|---|---|
+| 0.5 (synth-tuned) | 912 | 27.2 |
+| 1.0 | 625 | 15.8 |
+| **2.0 (default)** | **408** | **9.1** |
+| 3.0 | 343 | 6.4 |
+| 5.0 | 307 | 4.4 |
+
+Higher `accel_process_std` = filter trusts GPS more, IMU less — better on
+noisy real data but starves dead-reckoning during actual GPS outages. 2.0
+is the current best balance. Retune once we have a real GPS-outage segment
+(tunnel, basement).
+
+The synthetic `during_loss` row is still the pitch number and the map-comparison
+"wow moment". Real-drive numbers are the honest engineering baseline.
 
 ## What's next
 
