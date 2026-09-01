@@ -64,9 +64,10 @@ Practical wrinkle: **our current demo architecture streams sensor data over the 
 
 ## Tier 1 winner-tier features (I scoped these — coordinate the rollout)
 - [ ] Kick off the four Tier 1 features with Charvi + Aleena (specs are in their todo files)
-  - Road-snapped path (Aleena backend endpoint + Charvi map layer)
+  - Road-snapped path — Aleena backend **done** (`server/mapMatch.js`); Charvi still needs to consume the `matched_path` event
   - Confidence ellipse (Charvi, using existing `std_e_m` / `std_n_m` from `fused_result`)
   - Dead-reckoning ON/OFF toggle (Charvi, pure client-side)
   - Live drift counter HUD (Charvi, using `fused_result` + raw GPS)
 - [x] Extend `StepResult` with full 2×2 position covariance (`cov_ee`, `cov_en`, `cov_nn`) — unlocks Charvi's rotated ellipse. Wire-format documented in `model/README.md :: Inference API` with a JS eigendecomposition snippet. **Aleena's `modelBridge.js` needs no code change** — it forwards the whole `StepResult` object as-is to `fused_result`, so the new fields flow through automatically.
-- [ ] Rehearse the pitch flow with the new visuals in place before the buffer days — the demo script may want minor updates to lean on the toggle / ellipse moments
+- [x] **Post-run RTS backwards smoother** (`model/smoother.py`) — a bonus depth feature: same Kalman math run forward then backward, blended optimally. **5× improvement through the synth outage (1.39 m vs 6.35 m mean)**. Spec for the split-screen + playback layer added to Charvi's todo. Backend needs a small `/session/:id/smoothed` endpoint from Aleena (spec added to her todo).
+- [ ] Rehearse the pitch flow with the new visuals in place before the buffer days — the demo script may want minor updates to lean on the toggle / ellipse / smoothed-playback moments

@@ -43,6 +43,30 @@ One button on the demo view. Pauses rendering the corrected path/marker and show
 - [ ] Frame the moment: while toggled OFF *during* a GPS-loss segment, the vehicle marker literally freezes on the map. Judges will get it immediately.
 - [ ] This is pure client-side — no backend change needed. Both layers already come in via `fused_result`.
 
+### 3b. Split-screen "raw GPS vs Kalman" view (extends #3, higher wow)
+Take the toggle further — put both worlds on screen at the same time. Left panel: raw-GPS-only. Right panel: our fused output. Same session, same time, synchronised playback.
+
+The instant judges see the left marker freeze in a tunnel while the right marker keeps moving smoothly — the pitch is over. They already understand.
+
+- [ ] Two map instances side by side, same style, same zoom, same current bounds
+- [ ] Both driven by the SAME event stream — no duplicate socket connections needed
+- [ ] Left map: only ever consume `gps_used: true` samples. Draw raw GPS points + straight-line interp between them. Marker position = last raw GPS lat/lon. Between fixes, marker *does not move* (this is the point).
+- [ ] Right map: consume every `fused_result`. Draw the corrected path, marker follows `lat/lon`, ellipse per frame.
+- [ ] Camera sync: when the user pans/zooms either map, the other follows. Mapbox has a helper — `map.on('move', () => otherMap.jumpTo(map.getCenter()))`. Watch for infinite loops; use a `syncingFlag`.
+- [ ] Bottom-corner labels: "Raw GPS (what Google Maps sees)" left, "Kalman-fused (our system)" right.
+- [ ] Big centre pill during a GPS-loss segment: **"GPS LOST — dead reckoning active"** with a countdown timer of how long the outage has run.
+- [ ] Under the split, a Google-Maps-style speed/course row updating from `fused_result.heading_rad` + derived speed (or the `matched_path` if you want ground-snapped).
+
+This is the demo shot Aarushi wants for the pitch deck. **Design for a screenshot** — it should read as a compelling single frame even without motion.
+
+### 3c. RTS-smoothed playback layer (post-run mode)
+The backend now supports a "post-run smoother" — an RTS pass over a completed session that produces a significantly better trajectory than the live filter (see `model/README.md`: **5× tighter through the synth outage — 1.39 m vs 6.35 m mean drift**).
+
+- [ ] When a session ends, request the smoothed trajectory from Aleena's `/session/:id/smoothed` endpoint (she'll need to add this — it just calls `model/smoother.py` on the persisted samples)
+- [ ] Render as a THIRD path layer on the map (thick, distinct color — suggest deep purple or gold): "post-run refined trajectory"
+- [ ] Toggle to show/hide alongside live / raw
+- [ ] Pitch framing: *"live is what we compute in the moment; smoothed is what we compute after — same math, one pass forward, one pass back."*
+
 ### 4. Live drift counter HUD
 Numbers on-screen that turn abstract accuracy into a scoreboard.
 

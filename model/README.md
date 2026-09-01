@@ -46,6 +46,7 @@ model/
 ├── ingest.py            # schema-conformant CSV reader (preserves GPS nulls)
 ├── stepper.py           # SessionStepper — stateful, one sample in / one result out
 ├── run_on_log.py        # batch runner (drives SessionStepper over a CSV log)
+├── smoother.py          # post-run RTS backwards smoother (forward + backward pass)
 ├── serve_stdio.py       # streaming server — JSON-per-line stdio, spawn per session
 ├── smoke_stdio.py       # asserts stream output == batch output on the synth log
 ├── evaluate.py          # scores fused path vs. ground truth by phase
@@ -199,10 +200,39 @@ is the current best balance. Retune once we have a real GPS-outage segment
 The synthetic `during_loss` row is still the pitch number and the map-comparison
 "wow moment". Real-drive numbers are the honest engineering baseline.
 
+## Post-run RTS smoother (`smoother.py`)
+
+Same Kalman math, run twice: once forward through the log, then backward.
+Each smoothed state uses information from ALL samples — past AND future.
+Result: significantly tighter trajectory during GPS-outage segments,
+because the smoother knows where GPS re-acquired at the *end* of the
+outage and blends that backward into the outage window.
+
+```bash
+python smoother.py synth/synth_log.csv output/smoothed_path.csv
+python smoother.py ../data/real/ios_drive_2026-08-29.csv \
+                   ../data/real/output/aug29/smoothed_path.csv
+```
+
+### Online filter vs. RTS smoother on the synth outage
+
+| Phase          | Online (KF, std=2.0) | Smoothed (RTS) | Improvement |
+|----------------|----------------------|----------------|-------------|
+| before loss    | 4.03 m               | **0.59 m**     | 7×          |
+| **during loss** | **6.35 m** (max 10.1) | **1.39 m** (max 1.5) | **~5×**    |
+| after loss     | 1.83 m               | **0.78 m**     | 2×          |
+| overall        | 4.26 m               | **0.91 m**     | 5×          |
+
+The smoother is only useful **post-run** (needs the whole log). Live demo
+still uses the online `SessionStepper`. RTS is for the playback moment —
+"here's the definitive trajectory."
+
 ## What's next
 
 - Swap `synth/synth_log.csv` for Raga's real car log when available; re-tune
   `accel_process_std` if drift during real outages grows.
+- Get a real drive log with an actual GPS-outage segment (tunnel, basement)
+  so the smoother has something dramatic to demo against.
 - Add IMU bias state if the real log shows measurable accelerometer drift.
 - Aleena wires `serve_stdio.py` behind the WebSocket endpoint (spawn one
   process per socket connection, pipe JSON both ways).
