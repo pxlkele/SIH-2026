@@ -65,13 +65,15 @@ Then:
 ### Map-matching / road-snapping endpoint
 Charvi will render a third path layer that snaps the corrected trajectory to actual OSM road segments. Massive visual credibility win. Backend batches fused points and calls OSRM.
 
-- [ ] Buffer the last N `fused_result` points per session (suggest N = last ~5 seconds worth, i.e. ~250 samples at 50 Hz — but subsample to ~1 per 500ms before sending; OSRM doesn't want 50 Hz)
-- [ ] Every ~5 seconds, POST the subsampled buffer to **OSRM's map-matching endpoint** (public: `https://router.project-osrm.org/match/v1/driving/{coordinates}?geometries=geojson&overview=full`)
-- [ ] Parse the returned matched-path geometry (`matchings[0].geometry.coordinates`) into `[{lat, lon}, ...]`
-- [ ] Emit a `matched_path` socket.io event to the session with the array
-- [ ] Handle OSRM failure gracefully (no matches, rate limit) — just skip that batch, don't kill the session. Log at warn level.
-- [ ] Cache the last successful `matched_path` in the session so a late-arriving frontend can catch up on reconnect
-- [ ] *(Nice-to-have)* self-host OSRM in a Docker sidecar if public rate-limits bite during rehearsal — but public is fine for the demo itself
+- [x] Buffer the last N `fused_result` points per session (suggest N = last ~5 seconds worth, i.e. ~250 samples at 50 Hz — but subsample to ~1 per 500ms before sending; OSRM doesn't want 50 Hz) — `server/mapMatch.js`, timestamp-windowed buffer (not wall-clock, so it behaves the same for live and replayed sessions)
+- [x] Every ~5 seconds, POST the subsampled buffer to **OSRM's map-matching endpoint** — wall-clock `setInterval` for live sessions; replayed sessions dump rows near-instantly so there's a **flush-on-subprocess-exit** instead, or the 5s timer would never fire before the session ends
+- [x] Parse the returned matched-path geometry (`matchings[0].geometry.coordinates`) into `[{lat, lon}, ...]`
+- [x] Emit a `matched_path` socket.io event to the session with the array
+- [x] Handle OSRM failure gracefully (no matches, rate limit) — just skip that batch, don't kill the session. Log at warn level. — tested against a degenerate stationary-point input (the real iOS capture never moves), fails with a warning, doesn't crash
+- [x] Cache the last successful `matched_path` in the session so a late-arriving frontend can catch up on reconnect — `matcher.getLastMatchedPath()`, exposed via a `get_matched_path` socket ack
+
+**Found during testing — not just a theoretical rate limit:** the public OSRM demo server hard-caps `/match` requests at **10 trace coordinates** — confirmed empirically, `400 TooBig` above that, every time, not occasional throttling. The suggested 5s-window/500ms-subsample defaults produce up to 11 points, which would silently break map-matching on nearly every dispatch. Fixed by hard-capping to the most recent 10 points (`OSRM_PUBLIC_MAX_COORDS` in `mapMatch.js`) — but this makes each matched-path batch cover a shorter distance than the original ~5s plan intended. Given how tight this cap is:
+- [ ] *(Now higher-priority, not just nice-to-have)* self-host OSRM in a Docker sidecar before the actual demo — the public server's cap plus unknown availability/rate-limiting under venue wifi is a real risk to the "wow moment" feature, not a hypothetical one
 
 ## Deploy
 - [ ] Pick a backend host (open item) — factor in WebSocket support, subprocess/Python availability, and cold-start latency for the live demo

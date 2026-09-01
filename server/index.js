@@ -6,6 +6,7 @@ const csv = require('csv-parser');
 const { Readable } = require('stream');
 const { spawnModelSession } = require('./modelBridge');
 const db = require('./db');
+const { createMapMatcher } = require('./mapMatch');
 
 const app = express();
 app.use(cors());
@@ -64,9 +65,14 @@ io.on('connection', (socket) => {
 
   // One serve_stdio.py subprocess per live session — holds the filter state.
   const modelSession = spawnModelSession();
+  const matcher = createMapMatcher({
+    onMatchedPath: (path) => socket.emit('matched_path', path),
+    onWarn: (msg) => console.warn(`[mapmatch:${socket.id}]`, msg),
+  });
   modelSession.onResult((result) => {
     db.insertFusedResult(sessionId, result);
     socket.emit('fused_result', result);
+    if (result.state === 'running') matcher.addPoint(result);
   });
   modelSession.onError((err) => console.error(`[model:${socket.id}]`, err.message));
 
@@ -80,9 +86,16 @@ io.on('connection', (socket) => {
     modelSession.send(payload);
   });
 
+  // Lets a frontend that mounted its map late (or missed earlier
+  // 'matched_path' events) catch up without waiting for the next batch.
+  socket.on('get_matched_path', (cb) => {
+    if (typeof cb === 'function') cb(matcher.getLastMatchedPath());
+  });
+
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
     modelSession.kill();
+    matcher.stop();
     db.endSession(sessionId);
   });
 });
@@ -115,12 +128,23 @@ app.post('/replay/:socketId', async (req, res) => {
 
   const sessionId = db.createSession('replay');
   const replaySession = spawnModelSession();
+  const matcher = createMapMatcher({
+    onMatchedPath: (path) => targetSocket.emit('matched_path', path),
+    onWarn: (msg) => console.warn(`[mapmatch:replay:${req.params.socketId}]`, msg),
+  });
   replaySession.onResult((result) => {
     db.insertFusedResult(sessionId, result);
     targetSocket.emit('fused_result', result);
+    if (result.state === 'running') matcher.addPoint(result);
   });
   replaySession.onError((err) => console.error(`[model:replay:${req.params.socketId}]`, err.message));
-  replaySession.onExit(() => db.endSession(sessionId));
+  // Replayed rows land near-instantly rather than over real time, so the
+  // matcher's normal 5s wall-clock timer may never fire before the
+  // subprocess exits — flush whatever's buffered once it's done.
+  replaySession.onExit(() => {
+    db.endSession(sessionId);
+    matcher.flush().finally(() => matcher.stop());
+  });
 
   let rowsSent = 0;
   let rowsRejected = 0;
