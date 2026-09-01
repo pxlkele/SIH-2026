@@ -15,15 +15,15 @@
   - Yaw-only heading from `gyro_z` (level-vehicle assumption)
   - No IMU bias state (yet)
 - [x] Decide if you want to promote to an EKF or add bias state — trade timeline vs. real-log drift | Stay linear KF for now; only add bias if real logs show bad drift
-- [ ] Expose a clean `step(sample) -> position` interface so Palak's inference API can wrap it
-- [ ] Sanity-check numbers on `model/synth/synth_log.csv` still hold after your changes
+- [x] Expose a clean `step(sample) -> position` interface so Palak's inference API can wrap it
+- [x] Sanity-check numbers on `model/synth/synth_log.csv` still hold after your changes
   (current: 1.5 m mean err through the 20s GPS-loss window)
 
 ## Instrumentation
-- [ ] Confirm IMU sample rate holds steady at 50 Hz under load
-- [ ] Confirm GPS delivers ~1 Hz with fix quality logged (accuracy/HDOP or equivalent)
-- [ ] Timestamp alignment between IMU and GPS streams — single monotonic clock source
-- [ ] Verify raw device-frame output matches the locked `data_schema.md` field-for-field
+- [x] Confirm IMU sample rate holds steady at 50 Hz under load
+- [x] Confirm GPS delivers ~1 Hz with fix quality logged (accuracy/HDOP or equivalent)
+- [x] Timestamp alignment between IMU and GPS streams — single monotonic clock source
+- [x] Verify raw device-frame output matches the locked `data_schema.md` field-for-field
 
 ## Hardware-side fusion / live path
 - [ ] Wire sensor output to the live-ingestion transport (WebSocket) chosen with Aleena
