@@ -68,5 +68,5 @@ Practical wrinkle: **our current demo architecture streams sensor data over the 
   - Confidence ellipse (Charvi, using existing `std_e_m` / `std_n_m` from `fused_result`)
   - Dead-reckoning ON/OFF toggle (Charvi, pure client-side)
   - Live drift counter HUD (Charvi, using `fused_result` + raw GPS)
-- [ ] *(Optional, upgrade for the ellipse)* Extend `StepResult` in `model/stepper.py` to include the full 2×2 position covariance sub-matrix (`cov_ee`, `cov_en`, `cov_nn`) — cheap, unlocks a properly rotated ellipse instead of axis-aligned. Requires touching `serve_stdio.py` docs and letting Aleena know she needs to pass the new fields through
+- [x] Extend `StepResult` with full 2×2 position covariance (`cov_ee`, `cov_en`, `cov_nn`) — unlocks Charvi's rotated ellipse. Wire-format documented in `model/README.md :: Inference API` with a JS eigendecomposition snippet. **Aleena's `modelBridge.js` needs no code change** — it forwards the whole `StepResult` object as-is to `fused_result`, so the new fields flow through automatically.
 - [ ] Rehearse the pitch flow with the new visuals in place before the buffer days — the demo script may want minor updates to lean on the toggle / ellipse moments

@@ -98,3 +98,12 @@ class KalmanFilter2D:
 
     def position_std(self) -> tuple[float, float]:
         return float(np.sqrt(self.P[0, 0])), float(np.sqrt(self.P[1, 1]))
+
+    def position_cov(self) -> tuple[float, float, float]:
+        """Return the 2x2 position covariance sub-matrix as (cov_ee, cov_en, cov_nn).
+
+        The full 2x2 is [[cov_ee, cov_en], [cov_en, cov_nn]]. Charvi's frontend
+        can eigendecompose this to draw a properly rotated confidence ellipse
+        (as opposed to axis-aligned from just std_e / std_n).
+        """
+        return float(self.P[0, 0]), float(self.P[0, 1]), float(self.P[1, 1])

@@ -33,7 +33,7 @@ Rendered ellipse that visually grows during GPS loss and shrinks when GPS return
 - [ ] MVP: axis-aligned ellipse from `std_e_m` and `std_n_m` already in `fused_result` — semi-major = 2·std_e_m (East), semi-minor = 2·std_n_m (North), no rotation
 - [ ] Render as a translucent circle/ellipse layer on the map, re-drawn each `fused_result` frame
 - [ ] Fade color from green (low uncertainty, <5m) → yellow → red (>30m). Do NOT clip — a giant red ellipse during outage IS the story.
-- [ ] *Upgrade (if Palak exposes full covariance):* switch to a rotated ellipse from the full 2×2 P sub-matrix — proper eigendecomp, more accurate visualisation.
+- [ ] **Upgrade path:** `fused_result` now also includes `cov_ee`, `cov_en`, `cov_nn` (full 2×2 position covariance in m²). Eigendecompose for a properly rotated ellipse — sample JS snippet is in `model/README.md :: Inference API`. Do this after the axis-aligned MVP works.
 
 ### 3. Live "Dead Reckoning ON / OFF" toggle
 One button on the demo view. Pauses rendering the corrected path/marker and shows only what raw GPS would look like *right now, on this trip*. Makes the value proposition undeniable in one click.

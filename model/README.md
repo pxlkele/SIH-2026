@@ -114,7 +114,29 @@ child = spawn("python3", ["serve_stdio.py"], { cwd: "<repo>/model" })
 | `heading_rad`  | number\|null  | current heading estimate, East-of-North                     |
 | `std_e_m`      | number\|null  | 1-σ position uncertainty (metres, East)                     |
 | `std_n_m`      | number\|null  | 1-σ position uncertainty (metres, North)                    |
+| `cov_ee`       | number\|null  | position covariance (m²) — East variance                    |
+| `cov_en`       | number\|null  | position covariance (m²) — East/North cross-term            |
+| `cov_nn`       | number\|null  | position covariance (m²) — North variance                   |
 | `gps_used`     | bool          | whether this input sample contained a GPS fix consumed      |
+
+**On the covariance fields:** `std_e_m` and `std_n_m` are just `sqrt(cov_ee)`
+and `sqrt(cov_nn)` — enough for an *axis-aligned* uncertainty ellipse. The
+full 2×2 covariance matrix `[[cov_ee, cov_en], [cov_en, cov_nn]]` lets you
+draw a *properly rotated* ellipse via eigendecomposition. In JS:
+
+```js
+// eigenvalues λ± of the 2x2 = principal axis lengths (variance form)
+const tr = cov_ee + cov_nn;
+const det = cov_ee * cov_nn - cov_en * cov_en;
+const disc = Math.sqrt(Math.max(0, tr * tr / 4 - det));
+const lambdaMajor = tr / 2 + disc;
+const lambdaMinor = tr / 2 - disc;
+// axis lengths in metres (2-sigma ellipse):
+const semiMajor = 2 * Math.sqrt(lambdaMajor);
+const semiMinor = 2 * Math.sqrt(lambdaMinor);
+// rotation: angle of the major eigenvector, from East toward North
+const rotationRad = Math.atan2(2 * cov_en, cov_ee - cov_nn) / 2;
+```
 
 On a bad input line the server writes `{"error": "...", "line_no": N}` and
 keeps running — one malformed row does not kill the session.
