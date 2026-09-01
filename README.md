@@ -15,30 +15,37 @@ Turn a standalone smartphone into an Intelligent Dead Reckoning system that seam
 
 | Stage | What it does |
 |---|---|
-| **In-Vehicle Alignment & Calibration** | Automatically determines the phone's pitch, roll, and yaw relative to the vehicle's driving direction, regardless of mount type or position |
-| **AI Speed & Vibration Filter** | Filters out engine vibration, potholes, and mount noise; estimates true forward velocity directly from noisy accelerometer/gyro signals |
-| **Dead Reckoning (INS)** | Integrates filtered IMU data to propagate position during GNSS-denied stretches |
-| **Map-Matching & Non-Holonomic Constraints** | Snaps the drifting inertial path back onto the real road/ramp geometry using OpenStreetMap data — a vehicle can't slide sideways or fly upward |
-| **GNSS+INS Fusion (Kalman Filter)** | Fuses GNSS and IMU measurements to correct drift and produce a smooth, accurate position and velocity estimate |
-| **Seamless Mode Switching** | Transitions between GNSS-aided and dead-reckoning modes within milliseconds of signal loss/reacquisition |
+| **In-Vehicle Alignment** *(planned)* | Estimate the phone's pitch, roll, and yaw relative to the vehicle's driving direction, regardless of mount type or position. **Current build:** yaw-only heading from `gyro_z`, level-vehicle assumption. |
+| **Signal Conditioning** | Filter engine vibration, potholes, and mount noise from raw accelerometer / gyro streams before fusion. |
+| **Dead Reckoning (INS)** | Integrate filtered IMU data to propagate position during GNSS-denied stretches. |
+| **Map-Matching & Non-Holonomic Constraints** *(planned)* | Snap the drifting inertial path back onto the real road/ramp geometry using OpenStreetMap data — a vehicle can't slide sideways or fly upward. **Backend endpoint against OSRM is scoped for Tier 1.** |
+| **GNSS+INS Fusion (Kalman Filter)** | Fuse GNSS and IMU measurements to correct drift and produce a smooth, accurate position and velocity estimate. |
+| **Seamless Mode Switching** | Transition between GNSS-aided and dead-reckoning modes within milliseconds of signal loss/reacquisition. |
 
-We use a classical Kalman filter (Unscented Kalman Filter) as the core fusion engine — chosen over a purely learned fusion model because it gives us an interpretable, well-understood error model and predictable behavior under the exact kind of noisy, real-world sensor data we're working with, while our AI/ML components (speed estimation, noise filtering) handle the parts that are hard to model analytically.
+We use a **classical linear Kalman filter** as the core fusion engine — 2D state `[E, N, vE, vN]` in a local ENU tangent plane, with the IMU stream as the control input and GPS as the measurement update. Chosen over a learned fusion model because it gives us an interpretable, well-understood error model, predictable behaviour under noisy real-world sensor data, and — critically — deterministic on-device behaviour without a model runtime. Angad may promote to an EKF or add IMU bias state as real-log tuning demands.
 
 ---
 
 ## Anchor Use Case
 
-We validate and demo against a concrete scenario: **underground/multi-level parking and connecting tunnel navigation**, matching the benchmark of restricting drift to under 100m over 1km of GNSS-denied driving at 60 km/h.
+We validate and demo against a concrete scenario: **underground/multi-level parking and connecting tunnel navigation**. Target benchmark: keep drift under 100m over 1km of GNSS-denied driving at 60 km/h.
+
+**Current measured result** (60s synthetic scenario with a 20s GPS-loss window): **1.5 m mean position error through the outage vs. 11.9 m for a raw-GPS linear-interpolation baseline** — an ~8× improvement. Real-log tuning against Raga's captured drive is in progress.
 
 ---
 
 ## Tech Stack
 
-- **Model training:** Python, PyTorch, NumPy, Pandas, `filterpy`
-- **On-device inference:** TensorFlow Lite / ONNX Runtime Mobile
-- **Mobile app:** [Android — Kotlin, or specify your stack]
-- **Maps:** OpenStreetMap (offline), `osmnx`
-- **Dataset:** IO-VNBD (Inertial and Odometry benchmark dataset for ground vehicle positioning), plus our own logged sessions
+**Product vision — on-device mobile:**
+- **Mobile app:** Android (Kotlin) — planned. Kalman filter would be ported from Python to Kotlin for on-device execution.
+- **Maps:** OpenStreetMap tiles, with pre-downloaded offline coverage for GNSS-denied areas.
+
+**Hackathon demo architecture — what we're actually running for judges:**
+- **Fusion model (`model/`):** Python — NumPy + Pandas. Hand-rolled linear Kalman filter (no `filterpy`, no PyTorch — there is no learned model to train). Streaming inference via `SessionStepper` exposed over JSON-per-line stdio (`serve_stdio.py`).
+- **Backend (`server/`):** Node.js + Express + Socket.io. Spawns the Python filter as a subprocess per WebSocket connection; also accepts CSV replay via `POST /replay/:socketId` as a fallback path.
+- **Frontend:** React + shadcn/ui + Tailwind, deployed to Vercel. Renders raw GPS path vs. Kalman-corrected path on a live map (Mapbox GL JS or Leaflet + OSM).
+- **Map-matching (Tier 1, planned):** OSRM public map-matching API — snaps the corrected trajectory to real road segments.
+- **Dataset:** Our own car-based sensor log (Raga, complete). Public IMU datasets (RIDI, RoNIN, IO-VNBD) available as supplements if real-log tuning shows gaps.
 
 
 
@@ -46,9 +53,9 @@ We validate and demo against a concrete scenario: **underground/multi-level park
 
 | Role | Owner |
 |---|---|
+| Team lead · inference API · tuning · demo owner | Palak |
+| Sensor engineering (IMU/GPS instrumentation) · Kalman filter | Angad |
 | Data collection & ground-truth | Raga |
-|Sensor fusion / Kalman filter engineer| Angad |
-| ML / AI models | Palak |
 | Backend | Aleena |
 | Frontend / visualization | Charvi |
 | Documentation | Aarushi |
