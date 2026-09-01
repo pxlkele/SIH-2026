@@ -47,10 +47,10 @@ We validate and demo against a concrete scenario: **underground/multi-level park
 | Role | Owner |
 |---|---|
 | Data collection & ground-truth | Raga |
-|Sensor fusion / Kalman filter engineer| |
+|Sensor fusion / Kalman filter engineer| Angad |
 | ML / AI models | Palak |
 | Backend | Aleena |
-| Frontend / visualization |  |
+| Frontend / visualization | Charvi |
 | Documentation | Aarushi |
 
 ---
