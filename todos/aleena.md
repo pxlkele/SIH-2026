@@ -47,13 +47,11 @@ Optional but useful:
 
 ## Storage
 Pick one — recommendation is SQLite for the hackathon:
-- [ ] **SQLite via `better-sqlite3`** *(recommended)* — one file, zero config, easiest to demo
-- [ ] *Or* flat JSON/CSV per session — even simpler, fine if we don't need to query historical runs
-- [ ] *Not* Postgres — overkill for 10 days
+- [x] **SQLite via `better-sqlite3`** *(recommended)* — `server/db.js`, one file (`server/data.db`, gitignored), zero config
 
 Then:
-- [ ] Persist raw samples + fused output per session (enough to reconstruct a run for debugging / video re-record)
-- [ ] Session ID model so frontend can replay a specific run
+- [x] Persist raw samples + fused output per session (enough to reconstruct a run for debugging / video re-record) — `raw_samples` / `fused_results` tables, written on both the live socket path and `/replay`
+- [x] Session ID model so frontend can replay a specific run — `crypto.randomUUID()` per session (live: on connect, emitted as `session_started`; replay: on `POST /replay`, returned in the response). `GET /sessions` lists runs, `GET /sessions/:id` returns the full raw+fused history for one — verified against the real iOS capture (45/45 rows persisted correctly)
 
 ## Model integration
 - [x] Spawn `model/serve_stdio.py` once per user session — `server/modelBridge.js`. Note: spawns `python`, not `python3` — on Windows `python3` is a broken Microsoft Store alias stub; override via `PYTHON_BIN` env var if a machine differs

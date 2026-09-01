@@ -5,6 +5,7 @@ const cors = require('cors');
 const csv = require('csv-parser');
 const { Readable } = require('stream');
 const { spawnModelSession } = require('./modelBridge');
+const db = require('./db');
 
 const app = express();
 app.use(cors());
@@ -58,9 +59,15 @@ function csvRowToSample(row) {
 io.on('connection', (socket) => {
   console.log('A client connected:', socket.id);
 
+  const sessionId = db.createSession('live');
+  socket.emit('session_started', { sessionId });
+
   // One serve_stdio.py subprocess per live session — holds the filter state.
   const modelSession = spawnModelSession();
-  modelSession.onResult((result) => socket.emit('fused_result', result));
+  modelSession.onResult((result) => {
+    db.insertFusedResult(sessionId, result);
+    socket.emit('fused_result', result);
+  });
   modelSession.onError((err) => console.error(`[model:${socket.id}]`, err.message));
 
   socket.on('sample', (payload) => {
@@ -69,12 +76,14 @@ io.on('connection', (socket) => {
       socket.emit('sample_rejected', { error, sample: payload });
       return;
     }
+    db.insertRawSample(sessionId, payload);
     modelSession.send(payload);
   });
 
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
     modelSession.kill();
+    db.endSession(sessionId);
   });
 });
 
@@ -104,9 +113,14 @@ app.post('/replay/:socketId', async (req, res) => {
     return res.status(400).json({ error: `CSV parse failed: ${err.message}` });
   }
 
+  const sessionId = db.createSession('replay');
   const replaySession = spawnModelSession();
-  replaySession.onResult((result) => targetSocket.emit('fused_result', result));
+  replaySession.onResult((result) => {
+    db.insertFusedResult(sessionId, result);
+    targetSocket.emit('fused_result', result);
+  });
   replaySession.onError((err) => console.error(`[model:replay:${req.params.socketId}]`, err.message));
+  replaySession.onExit(() => db.endSession(sessionId));
 
   let rowsSent = 0;
   let rowsRejected = 0;
@@ -117,12 +131,26 @@ app.post('/replay/:socketId', async (req, res) => {
       rowsRejected += 1;
       continue;
     }
+    db.insertRawSample(sessionId, sample);
     replaySession.send(sample);
     rowsSent += 1;
   }
   replaySession.end();
 
-  res.json({ rowsSent, rowsRejected });
+  res.json({ sessionId, rowsSent, rowsRejected });
+});
+
+// Session history — lets the frontend list past runs and replay one by id.
+app.get('/sessions', (req, res) => {
+  res.json(db.listSessions());
+});
+
+app.get('/sessions/:id', (req, res) => {
+  const run = db.getSessionRun(req.params.id);
+  if (!run) {
+    return res.status(404).json({ error: `no session with id ${req.params.id}` });
+  }
+  res.json(run);
 });
 
 const PORT = 4000;
