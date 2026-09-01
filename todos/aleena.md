@@ -76,6 +76,11 @@ Charvi will render a third path layer that snaps the corrected trajectory to act
 - [ ] *(Now higher-priority, not just nice-to-have)* self-host OSRM in a Docker sidecar before the actual demo — the public server's cap plus unknown availability/rate-limiting under venue wifi is a real risk to the "wow moment" feature, not a hypothetical one
 
 ## Deploy
-- [ ] Pick a backend host (open item) — factor in WebSocket support, subprocess/Python availability, and cold-start latency for the live demo
+- [x] Pick a backend host — **Railway**, chosen for Docker support + no idle spin-down (Render's free tier sleeps after ~15 min, which would cause an embarrassing 30-60s cold start if a judge tries the demo after a lull)
+- [x] Package the app for deployment — root `Dockerfile` (Node 22 + Python 3 + build tools for `better-sqlite3`'s native compile), `.dockerignore`. `index.js` now reads `PORT`/`CORS_ORIGIN` from env instead of hardcoding, since hosts assign the port dynamically
+- [x] Proved the Docker image works, not just that it builds — ran the full test suite (`testLiveIntegration.js`, `smokeTestRealData.js`, `testMapMatchIntegration.js`) against a locally-run container reachable only through its exposed port, same as a real host would run it. All passed, including the outbound call to OSRM from inside the container.
+- [ ] Actually deploy to Railway (needs a human: account + GitHub connection) — steps: railway.app → New Project → Deploy from GitHub repo → select this repo → set `CORS_ORIGIN` env var once Charvi's frontend URL exists → Railway assigns a public URL
+- [ ] Re-run the smoke tests above against the live Railway URL (not just the local container) — proves it survives the real network hop, not just the packaging
 - [ ] Deploy backend + smoke-test against Charvi's Vercel frontend
 - [ ] Test end-to-end in venue-like network conditions
+- [ ] *(Optional)* SQLite storage is ephemeral on Railway unless a Volume is mounted — data resets on redeploy. Fine for a hackathon demo; mention to the team if session history needs to survive restarts

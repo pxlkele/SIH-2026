@@ -8,13 +8,17 @@ const { spawnModelSession } = require('./modelBridge');
 const db = require('./db');
 const { createMapMatcher } = require('./mapMatch');
 
+// '*' by default for now (hackathon speed); set CORS_ORIGIN to Charvi's
+// deployed frontend URL once it exists, to lock this down.
+const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
+
 const app = express();
-app.use(cors());
+app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.text({ type: 'text/csv', limit: '25mb' }));
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: '*' }
+  cors: { origin: CORS_ORIGIN }
 });
 
 app.get('/', (req, res) => {
@@ -177,7 +181,7 @@ app.get('/sessions/:id', (req, res) => {
   res.json(run);
 });
 
-const PORT = 4000;
+const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
