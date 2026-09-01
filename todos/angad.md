@@ -8,13 +8,13 @@
 > going forward. Palak still owns tuning + the inference API on top.
 
 ## Kalman filter (state-space fusion)
-- [.] Review the first-cut filter in `model/kalman.py` + `model/frames.py` — keep, rewrite, or replace
-- [ ] Confirm the design assumptions in `model/README.md` are what you want:
+- [x] Review the first-cut filter in `model/kalman.py` + `model/frames.py` — keep, rewrite, or replace | both are good keep them
+- [x] Confirm the design assumptions in `model/README.md` are what you want:  | confirmed all good
   - Local ENU tangent plane
   - State `[E, N, vE, vN]`, IMU as control input
   - Yaw-only heading from `gyro_z` (level-vehicle assumption)
   - No IMU bias state (yet)
-- [ ] Decide if you want to promote to an EKF or add bias state — trade timeline vs. real-log drift
+- [x] Decide if you want to promote to an EKF or add bias state — trade timeline vs. real-log drift | Stay linear KF for now; only add bias if real logs show bad drift
 - [ ] Expose a clean `step(sample) -> position` interface so Palak's inference API can wrap it
 - [ ] Sanity-check numbers on `model/synth/synth_log.csv` still hold after your changes
   (current: 1.5 m mean err through the 20s GPS-loss window)
