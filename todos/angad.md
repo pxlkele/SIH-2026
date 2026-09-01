@@ -8,7 +8,7 @@
 > going forward. Palak still owns tuning + the inference API on top.
 
 ## Kalman filter (state-space fusion)
-- [ ] Review the first-cut filter in `model/kalman.py` + `model/frames.py` — keep, rewrite, or replace
+- [.] Review the first-cut filter in `model/kalman.py` + `model/frames.py` — keep, rewrite, or replace
 - [ ] Confirm the design assumptions in `model/README.md` are what you want:
   - Local ENU tangent plane
   - State `[E, N, vE, vN]`, IMU as control input
