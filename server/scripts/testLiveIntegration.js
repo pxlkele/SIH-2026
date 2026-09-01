@@ -1,11 +1,14 @@
-// Throwaway integration check against a running `node index.js` on :4000.
+// Throwaway integration check against a running server (localhost by
+// default, or any deployed URL via BACKEND_URL).
 // Connects a real socket.io client, sends a valid sample, a malformed one,
 // waits for fused_result / sample_rejected, then exercises /replay.
 // Usage: node index.js (in one terminal) && node server/scripts/testLiveIntegration.js
+//   BACKEND_URL=https://your-app.up.railway.app node server/scripts/testLiveIntegration.js
 
 const { io } = require('socket.io-client');
 
-const socket = io('http://localhost:4000');
+const BASE_URL = process.env.BACKEND_URL || 'http://localhost:4000';
+const socket = io(BASE_URL);
 
 let gotFused = false;
 let gotRejected = false;
@@ -37,7 +40,7 @@ setTimeout(async () => {
   if (!gotFused) { console.error('FAIL: no fused_result received'); process.exitCode = 1; }
   if (!gotRejected) { console.error('FAIL: no sample_rejected received'); process.exitCode = 1; }
 
-  const res = await fetch(`http://localhost:4000/replay/${socket.id}`, {
+  const res = await fetch(`${BASE_URL}/replay/${socket.id}`, {
     method: 'POST',
     headers: { 'Content-Type': 'text/csv' },
     body: 'timestamp_ms,accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z,gps_lat,gps_lon,gps_accuracy_m\r\n'

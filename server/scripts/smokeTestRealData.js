@@ -11,8 +11,10 @@ const { io } = require('socket.io-client');
 
 const CSV_PATH = path.join(__dirname, '..', '..', 'data', 'real', 'ios_test_2026-08-24.csv');
 
+const BASE_URL = process.env.BACKEND_URL || 'http://localhost:4000';
+
 async function main() {
-  const socket = io('http://localhost:4000');
+  const socket = io(BASE_URL);
   const results = [];
 
   await new Promise((resolve, reject) => {
@@ -25,7 +27,7 @@ async function main() {
   socket.on('sample_rejected', (r) => console.error('REJECTED (unexpected):', r));
 
   const csvText = fs.readFileSync(CSV_PATH, 'utf8');
-  const res = await fetch(`http://localhost:4000/replay/${socket.id}`, {
+  const res = await fetch(`${BASE_URL}/replay/${socket.id}`, {
     method: 'POST',
     headers: { 'Content-Type': 'text/csv' },
     body: csvText,
