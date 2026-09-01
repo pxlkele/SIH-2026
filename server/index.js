@@ -4,9 +4,17 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const csv = require('csv-parser');
 const { Readable } = require('stream');
-const { spawnModelSession } = require('./modelBridge');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const crypto = require('crypto');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+const { spawnModelSession, PYTHON_BIN, MODEL_DIR } = require('./modelBridge');
 const db = require('./db');
 const { createMapMatcher } = require('./mapMatch');
+
+const execFileAsync = promisify(execFile);
 
 // '*' by default for now (hackathon speed); set CORS_ORIGIN to Charvi's
 // deployed frontend URL once it exists, to lock this down.
@@ -179,6 +187,68 @@ app.get('/sessions/:id', (req, res) => {
     return res.status(404).json({ error: `no session with id ${req.params.id}` });
   }
   res.json(run);
+});
+
+function rawSamplesToCsv(rows) {
+  const header = 'timestamp_ms,accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z,gps_lat,gps_lon,gps_accuracy_m';
+  const lines = rows.map((r) => [
+    r.timestamp_ms, r.accel_x, r.accel_y, r.accel_z,
+    r.gyro_x, r.gyro_y, r.gyro_z,
+    r.gps_lat ?? '', r.gps_lon ?? '', r.gps_accuracy_m ?? '',
+  ].join(','));
+  return [header, ...lines].join('\n') + '\n';
+}
+
+function parseSmoothedCsv(filePath) {
+  return new Promise((resolve, reject) => {
+    const rows = [];
+    fs.createReadStream(filePath)
+      .pipe(csv())
+      .on('data', (row) => rows.push({
+        timestamp_ms: Number(row.timestamp_ms),
+        lat: Number(row.lat),
+        lon: Number(row.lon),
+        heading_rad: Number(row.heading_rad),
+        std_e_m: Number(row.std_e_m),
+        std_n_m: Number(row.std_n_m),
+        cov_ee: Number(row.cov_ee),
+        cov_en: Number(row.cov_en),
+        cov_nn: Number(row.cov_nn),
+      }))
+      .on('end', () => resolve(rows))
+      .on('error', reject);
+  });
+}
+
+// Post-run RTS smoothing — needs the whole log (past AND future samples),
+// so it only makes sense once a session is over, unlike the live/replay
+// paths which run the online filter sample-by-sample. Blocks until done;
+// a full session smooths in well under a second, so 202+polling wasn't
+// worth the extra complexity for the demo.
+app.get('/sessions/:id/smoothed', async (req, res) => {
+  const run = db.getSessionRun(req.params.id);
+  if (!run) {
+    return res.status(404).json({ error: `no session with id ${req.params.id}` });
+  }
+
+  const tmpIn = path.join(os.tmpdir(), `smooth-in-${crypto.randomUUID()}.csv`);
+  const tmpOut = path.join(os.tmpdir(), `smooth-out-${crypto.randomUUID()}.csv`);
+
+  try {
+    await fs.promises.writeFile(tmpIn, rawSamplesToCsv(run.rawSamples));
+    // Runs like serve_stdio.py does — cwd inside model/, plain script
+    // invocation — not `python -m model.smoother` as the module's own
+    // docstring suggests; that form fails (bare imports inside resolve
+    // against model/ as cwd, not against the repo root as -m would need).
+    await execFileAsync(PYTHON_BIN, ['smoother.py', tmpIn, tmpOut], { cwd: MODEL_DIR });
+    const smoothed = await parseSmoothedCsv(tmpOut);
+    res.json(smoothed);
+  } catch (err) {
+    console.error(`[smoother:${req.params.id}]`, err.message);
+    res.status(500).json({ error: 'smoothing failed', detail: err.message });
+  } finally {
+    await Promise.allSettled([fs.promises.unlink(tmpIn), fs.promises.unlink(tmpOut)]);
+  }
 });
 
 const PORT = process.env.PORT || 4000;

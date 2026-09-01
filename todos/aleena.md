@@ -65,9 +65,13 @@ Then:
 ### Post-run RTS-smoothed trajectory endpoint (new, small)
 The model now has a `smoother.py` that runs an RTS backward pass over a completed session's samples — result is ~5× tighter than the live filter through GPS outages (**1.39 m mean vs 6.35 m** on the synth 20-s outage). Charvi wants to render this as a third path layer after a session ends.
 
-- [ ] Add `GET /session/:id/smoothed` — reads the raw sample CSV for that session out of SQLite (or wherever), pipes it through `python model/smoother.py <in> <out>`, returns the smoothed CSV or a JSON array of `{lat, lon, timestamp_ms, std_e_m, std_n_m, cov_ee, cov_en, cov_nn}` for direct frontend consumption
-- [ ] Should be async — a long session might take a second or two to smooth. `202 Accepted` + polling, or just block; either works for the demo
-- [ ] No changes to live/replay paths needed — this is strictly post-run
+- [x] Add `GET /sessions/:id/smoothed` (plural `/sessions`, matching the existing `GET /sessions/:id` route, not the singular the note suggested) — pulls raw samples for that session out of SQLite, writes them to a temp CSV, pipes through `smoother.py`, returns a JSON array of `{timestamp_ms, lat, lon, heading_rad, std_e_m, std_n_m, cov_ee, cov_en, cov_nn}`. Temp files cleaned up in a `finally` regardless of outcome.
+- [x] Blocks rather than `202`+polling — a full session smooths in well under a second, not worth the extra complexity for the demo
+- [x] No changes to live/replay paths — strictly post-run, as scoped
+
+**Found while wiring this up:** `smoother.py`'s own docstring says `python -m model.smoother <in> <out>`, but that invocation actually fails — `ModuleNotFoundError: No module named 'frames'`, because of a bare `from frames import ...` inside that only resolves when run the way `serve_stdio.py` already runs (cwd inside `model/`, plain script invocation, not `-m` from the repo root). Worth fixing the docstring/adding a proper package import if anyone runs it standalone later; the backend itself uses the working invocation regardless.
+
+Tested against the synth log's 20s GPS-loss window: smoothed uncertainty at mid-run (~3.5m std_e_m) is roughly half the live filter's stored value at the same timestamp (~6.6m) — consistent with the tightening Palak described. `server/scripts/testSmootherEndpoint.js`.
 
 ### Map-matching / road-snapping endpoint
 Charvi will render a third path layer that snaps the corrected trajectory to actual OSM road segments. Massive visual credibility win. Backend batches fused points and calls OSRM.

@@ -64,4 +64,4 @@ function spawnModelSession() {
   };
 }
 
-module.exports = { spawnModelSession };
+module.exports = { spawnModelSession, PYTHON_BIN, MODEL_DIR };
