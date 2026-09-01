@@ -38,6 +38,13 @@ Optional but useful:
 - [x] Endpoint that accepts a replayed CSV log conforming to `data_schema.md` (fallback path for Charvi's UI) — `POST /replay/:socketId`, raw CSV body, parsed with `csv-parser` (handles CRLF correctly, unlike a hand-rolled split)
 - [x] Validate incoming samples; reject malformed rows without killing the stream — `validateSample()`, emits `sample_rejected` back to the client instead of forwarding to the model
 
+### Real sensor data available
+- **First real capture is in the repo:** `data/real/ios_test_2026-08-24.csv` — iOS SensorLog, converted through `model/adapters/ios_sensorlog.py`, schema-conformant.
+- Only ~1.5 s of data (45 IMU samples, 2 GPS fixes) — enough to smoke-test the `/replay/:socketId` path end-to-end against a real device format, not enough for anything meaningful about live-demo behaviour.
+- **Recommended smoke test:** POST this file to `/replay/:socketId` and confirm the resulting `fused_result` events look sane on your side. Everything after fix #2 should have `state: "running"`.
+- Longer drive logs land as they come; every new log gets converted to `data/real/*.csv` and is ready for you the same way — no format work on your end.
+- See `data/README.md` for full details and the adapter usage.
+
 ## Storage
 Pick one — recommendation is SQLite for the hackathon:
 - [ ] **SQLite via `better-sqlite3`** *(recommended)* — one file, zero config, easiest to demo

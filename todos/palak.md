@@ -6,7 +6,9 @@
 > Palak stays close to the model via tuning + API + demo ownership.
 
 ## Tuning on real data
-- [ ] When Raga's real car log lands in the repo, run it through the filter and check the raw-vs-corrected drift number
+- [x] Adapter for real device logs → schema-conformant CSV — `model/adapters/ios_sensorlog.py` (iOS SensorLog format). First converted file lives at `data/real/ios_test_2026-08-24.csv`. Pipeline runs cleanly on it.
+- [ ] **Get a longer drive log from Raga.** The 2026-08-24 capture is only 1.5 s / 45 IMU samples / 2 GPS fixes — enough to prove the ingestion path, not enough to tune.
+- [ ] Once a real drive log lands: run it through the filter, check the raw-vs-corrected drift number
 - [ ] Re-tune `accel_process_std` (and `min_gps_std_m` if needed) — see `model/README.md :: Tuning knobs`
 - [ ] If real IMU shows visible drift, work with Angad to add bias state or a stationary-start calibration
 - [ ] Reference IMU datasets (RIDI / RoNIN) if extra tuning data is needed

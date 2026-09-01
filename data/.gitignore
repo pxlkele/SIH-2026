@@ -1,0 +1,2 @@
+real/output/*.csv
+!real/output/.gitkeep
