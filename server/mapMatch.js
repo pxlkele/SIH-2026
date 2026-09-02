@@ -1,7 +1,21 @@
-const OSRM_MATCH_URL = 'https://router.project-osrm.org/match/v1/driving';
+// Defaults to the public demo server; set OSRM_URL to a self-hosted
+// instance (see osrm/ — build-extract.sh + Dockerfile, deployed as its
+// own Railway service) to avoid its hard 10-coordinate cap and the
+// availability risk of a shared free API during the actual demo.
+const OSRM_BASE_URL = process.env.OSRM_URL || 'https://router.project-osrm.org';
+const OSRM_MATCH_URL = `${OSRM_BASE_URL}/match/v1/driving`;
+
+// The public OSRM demo server hard-caps /match requests at 10 trace
+// coordinates (confirmed empirically — HTTP 400 "TooBig" above that, not
+// a soft rate limit). Our self-hosted instance raises this to 100 (also
+// its own explicit default, set via --max-matching-size in osrm/Dockerfile)
+// — OSRM_MAX_COORDS lets deployment config pick the right cap for whichever
+// server OSRM_URL points at, with a safe margin under the self-hosted 100.
+const DEFAULT_MAX_COORDS = process.env.OSRM_URL ? 90 : 10;
+const OSRM_MAX_COORDS = process.env.OSRM_MAX_COORDS ? Number(process.env.OSRM_MAX_COORDS) : DEFAULT_MAX_COORDS;
 
 // Buffers fused positions for one session and periodically snaps them to
-// real roads via OSRM's public map-matching API.
+// real roads via OSRM's map-matching API.
 //
 // Buffer holds the last `bufferWindowMs` of points by their own
 // timestamp_ms (not wall-clock) so it behaves the same whether points
@@ -9,13 +23,8 @@ const OSRM_MATCH_URL = 'https://router.project-osrm.org/match/v1/driving';
 // `intervalMs` (wall-clock — this part IS about pacing OSRM calls, not
 // data density) the buffer is subsampled down to ~1 point per
 // `subsampleMs` and POSTed as a batch.
-// The public OSRM demo server hard-caps /match requests at 10 trace
-// coordinates (confirmed empirically — HTTP 400 "TooBig" above that,
-// not a soft rate limit). A self-hosted instance can raise this.
-const OSRM_PUBLIC_MAX_COORDS = 10;
-
 function createMapMatcher({
-  onMatchedPath, onWarn, intervalMs = 5000, subsampleMs = 500, bufferWindowMs = 5000, maxPoints = OSRM_PUBLIC_MAX_COORDS,
+  onMatchedPath, onWarn, intervalMs = 5000, subsampleMs = 500, bufferWindowMs = 5000, maxPoints = OSRM_MAX_COORDS,
 }) {
   let buffer = []; // { lat, lon, timestamp_ms }
   let lastMatchedPath = null;
