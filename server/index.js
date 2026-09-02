@@ -109,7 +109,7 @@ function csvRowToSample(row) {
 // one person, maybe a handful during rehearsal — this is a ceiling
 // against abuse, not a throttle on normal use. Override via env var if
 // it ever turns out too tight.
-const MAX_CONCURRENT_SESSIONS = Number(process.env.MAX_CONCURRENT_SESSIONS) || 20;
+const MAX_CONCURRENT_SESSIONS = Number(process.env.MAX_CONCURRENT_SESSIONS) || 50;
 let activeSessionCount = 0;
 
 io.on('connection', (socket) => {
