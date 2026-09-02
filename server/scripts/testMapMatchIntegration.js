@@ -12,6 +12,10 @@ const { io } = require('socket.io-client');
 const CSV_PATH = path.join(__dirname, '..', '..', 'model', 'synth', 'synth_log.csv');
 
 const BASE_URL = process.env.BACKEND_URL || 'http://localhost:4000';
+// Ceiling only — a safety net against a genuinely hung server (subprocess
+// exit + OSRM round trip usually takes well under this), not a guess at
+// how long things "should" take.
+const WAIT_TIMEOUT_MS = 15000;
 
 async function main() {
   const socket = io(BASE_URL);
@@ -24,8 +28,14 @@ async function main() {
   });
   console.log('connected as', socket.id);
 
+  const matchedPathPromise = new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), WAIT_TIMEOUT_MS);
+    socket.once('matched_path', (path) => {
+      clearTimeout(timer);
+      resolve(path);
+    });
+  });
   socket.on('fused_result', () => { fusedCount++; });
-  socket.on('matched_path', (path) => { matchedPath = path; });
 
   const csvText = fs.readFileSync(CSV_PATH, 'utf8');
   const res = await fetch(`${BASE_URL}/replay/${socket.id}`, {
@@ -35,8 +45,7 @@ async function main() {
   });
   console.log('replay response:', await res.json());
 
-  // Give the subprocess time to exit and the matcher to flush + call OSRM.
-  await new Promise((r) => setTimeout(r, 10000));
+  matchedPath = await matchedPathPromise;
 
   console.log(`fused_result events: ${fusedCount}`);
   console.log('matched_path received:', matchedPath ? `${matchedPath.length} points` : 'NONE');

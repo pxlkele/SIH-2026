@@ -10,6 +10,9 @@ const { io } = require('socket.io-client');
 
 const BASE_URL = process.env.BACKEND_URL || 'http://localhost:4000';
 const CSV_PATH = path.join(__dirname, '..', '..', 'model', 'synth', 'synth_log.csv');
+// Ceiling only — a safety net against a genuinely hung server, not a
+// guess at how long things "should" take.
+const WAIT_TIMEOUT_MS = 8000;
 
 async function main() {
   const socket = io(BASE_URL);
@@ -28,12 +31,17 @@ async function main() {
   const { sessionId, rowsSent } = await replayRes.json();
   console.log('replay done:', { sessionId, rowsSent });
 
-  // give the replay subprocess time to finish (results still streaming
-  // into storage asynchronously after the HTTP response returns)
-  await new Promise((r) => setTimeout(r, 4000));
-
-  const runRes = await fetch(`${BASE_URL}/sessions/${sessionId}`);
-  const run = await runRes.json();
+  // Results still stream into storage asynchronously after the HTTP
+  // response returns — poll until they've all landed instead of guessing
+  // a fixed delay, which was flaky over real (vs. localhost) latency.
+  const start = Date.now();
+  let run;
+  do {
+    const runRes = await fetch(`${BASE_URL}/sessions/${sessionId}`);
+    run = await runRes.json();
+    if (run.fusedResults.length >= rowsSent) break;
+    await new Promise((r) => setTimeout(r, 200));
+  } while (Date.now() - start < WAIT_TIMEOUT_MS);
   console.log('stored fused_result rows:', run.fusedResults.length);
 
   const smoothRes = await fetch(`${BASE_URL}/sessions/${sessionId}/smoothed`);

@@ -12,6 +12,19 @@ const { io } = require('socket.io-client');
 const CSV_PATH = path.join(__dirname, '..', '..', 'data', 'real', 'ios_test_2026-08-24.csv');
 
 const BASE_URL = process.env.BACKEND_URL || 'http://localhost:4000';
+// Ceiling only — a safety net against a genuinely hung server, not a
+// guess at how long things "should" take.
+const WAIT_TIMEOUT_MS = 8000;
+
+// Polls until `getCount()` reaches `target`, or the timeout elapses —
+// resolves as soon as the real thing happens instead of guessing a fixed
+// delay, which was flaky over real (vs. localhost) network latency.
+async function waitForCount(getCount, target, timeoutMs) {
+  const start = Date.now();
+  while (getCount() < target && Date.now() - start < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
 
 async function main() {
   const socket = io(BASE_URL);
@@ -35,8 +48,7 @@ async function main() {
   const replayResponse = await res.json();
   console.log('replay response:', replayResponse);
 
-  // give the fused_result events a moment to arrive over the socket
-  await new Promise((r) => setTimeout(r, 1000));
+  await waitForCount(() => results.length, replayResponse.rowsSent, WAIT_TIMEOUT_MS);
 
   const states = results.map((r) => r.state);
   const firstRunningIdx = states.indexOf('running');

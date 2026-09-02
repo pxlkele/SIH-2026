@@ -8,13 +8,32 @@
 const { io } = require('socket.io-client');
 
 const BASE_URL = process.env.BACKEND_URL || 'http://localhost:4000';
-const socket = io(BASE_URL);
+// Ceiling only — a safety net against a genuinely hung server, not a
+// guess at how long things "should" take. Real network round trips vary,
+// so we wait for the actual event instead of a fixed short delay.
+const WAIT_TIMEOUT_MS = 8000;
 
-let gotFused = false;
-let gotRejected = false;
+function waitForEvent(socket, eventName, timeoutMs) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), timeoutMs);
+    socket.once(eventName, (payload) => {
+      clearTimeout(timer);
+      resolve(payload);
+    });
+  });
+}
 
-socket.on('connect', () => {
+async function main() {
+  const socket = io(BASE_URL);
+
+  await new Promise((resolve, reject) => {
+    socket.on('connect', resolve);
+    socket.on('connect_error', reject);
+  });
   console.log('connected as', socket.id);
+
+  const fusedPromise = waitForEvent(socket, 'fused_result', WAIT_TIMEOUT_MS);
+  const rejectedPromise = waitForEvent(socket, 'sample_rejected', WAIT_TIMEOUT_MS);
 
   socket.emit('sample', {
     timestamp_ms: 1735024800000,
@@ -22,23 +41,15 @@ socket.on('connect', () => {
     gyro_x: 0.001, gyro_y: -0.002, gyro_z: 0.0,
     gps_lat: 12.9716, gps_lon: 77.5946, gps_accuracy_m: 5.0,
   });
-
   socket.emit('sample', { timestamp_ms: 1735024800020, accel_x: 'not-a-number' });
-});
 
-socket.on('fused_result', (result) => {
-  gotFused = true;
-  console.log('fused_result:', result);
-});
+  const [fused, rejected] = await Promise.all([fusedPromise, rejectedPromise]);
 
-socket.on('sample_rejected', (payload) => {
-  gotRejected = true;
-  console.log('sample_rejected:', payload);
-});
-
-setTimeout(async () => {
-  if (!gotFused) { console.error('FAIL: no fused_result received'); process.exitCode = 1; }
-  if (!gotRejected) { console.error('FAIL: no sample_rejected received'); process.exitCode = 1; }
+  if (!fused) console.error('FAIL: no fused_result received');
+  else console.log('fused_result:', fused);
+  if (!rejected) console.error('FAIL: no sample_rejected received');
+  else console.log('sample_rejected:', rejected);
+  if (!fused || !rejected) process.exitCode = 1;
 
   const res = await fetch(`${BASE_URL}/replay/${socket.id}`, {
     method: 'POST',
@@ -59,4 +70,9 @@ setTimeout(async () => {
   // its own — don't force process.exit(). A forced exit can race with
   // native handle teardown (hits a libuv assertion on Windows).
   socket.close();
-}, 1500);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exitCode = 1;
+});
