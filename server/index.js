@@ -16,9 +16,13 @@ const { createMapMatcher } = require('./mapMatch');
 
 const execFileAsync = promisify(execFile);
 
-// '*' by default for now (hackathon speed); set CORS_ORIGIN to Charvi's
-// deployed frontend URL once it exists, to lock this down.
-const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
+// '*' by default for now (hackathon speed, and Charvi's frontend URL
+// doesn't exist yet). Once it does, set CORS_ORIGIN on Railway to a
+// comma-separated list (e.g. "https://her-app.vercel.app,http://localhost:5173")
+// to lock this down — no code change needed, just the env var.
+const CORS_ORIGIN = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim())
+  : '*';
 
 const app = express();
 app.use(cors({ origin: CORS_ORIGIN }));
@@ -69,7 +73,23 @@ function csvRowToSample(row) {
   };
 }
 
+// Each live connection or /replay call spawns a real Python subprocess.
+// Cap how many can run at once so a flood of connections can't exhaust
+// server resources. Default is deliberately generous — a real demo is
+// one person, maybe a handful during rehearsal — this is a ceiling
+// against abuse, not a throttle on normal use. Override via env var if
+// it ever turns out too tight.
+const MAX_CONCURRENT_SESSIONS = Number(process.env.MAX_CONCURRENT_SESSIONS) || 20;
+let activeSessionCount = 0;
+
 io.on('connection', (socket) => {
+  if (activeSessionCount >= MAX_CONCURRENT_SESSIONS) {
+    console.warn(`Rejected connection ${socket.id}: at MAX_CONCURRENT_SESSIONS (${MAX_CONCURRENT_SESSIONS})`);
+    socket.emit('server_busy', { error: 'server is at capacity, try again shortly' });
+    socket.disconnect(true);
+    return;
+  }
+  activeSessionCount += 1;
   console.log('A client connected:', socket.id);
 
   const sessionId = db.createSession('live');
@@ -109,6 +129,7 @@ io.on('connection', (socket) => {
     modelSession.kill();
     matcher.stop();
     db.endSession(sessionId);
+    activeSessionCount -= 1;
   });
 });
 
@@ -124,6 +145,9 @@ app.post('/replay/:socketId', async (req, res) => {
   if (typeof req.body !== 'string' || !req.body.trim()) {
     return res.status(400).json({ error: 'expected raw CSV body, Content-Type: text/csv' });
   }
+  if (activeSessionCount >= MAX_CONCURRENT_SESSIONS) {
+    return res.status(503).json({ error: 'server is at capacity, try again shortly' });
+  }
 
   const rows = [];
   try {
@@ -138,6 +162,7 @@ app.post('/replay/:socketId', async (req, res) => {
     return res.status(400).json({ error: `CSV parse failed: ${err.message}` });
   }
 
+  activeSessionCount += 1;
   const sessionId = db.createSession('replay');
   const replaySession = spawnModelSession();
   const matcher = createMapMatcher({
@@ -156,6 +181,7 @@ app.post('/replay/:socketId', async (req, res) => {
   replaySession.onExit(() => {
     db.endSession(sessionId);
     matcher.flush().finally(() => matcher.stop());
+    activeSessionCount -= 1;
   });
 
   let rowsSent = 0;
