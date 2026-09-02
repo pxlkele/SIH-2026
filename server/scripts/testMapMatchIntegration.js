@@ -43,8 +43,11 @@ async function main() {
 
   const ok = fusedCount > 0 && matchedPath && matchedPath.length > 0;
   console.log(ok ? 'MAP-MATCH INTEGRATION TEST PASSED' : 'MAP-MATCH INTEGRATION TEST FAILED');
+  // Set the exit code and let Node exit naturally once handles close, on
+  // its own — don't force process.exit(). A forced exit can race with
+  // native handle teardown (hits a libuv assertion on Windows).
+  process.exitCode = ok ? 0 : 1;
   socket.close();
-  process.exit(ok ? 0 : 1);
 }
 
 main().catch((err) => {

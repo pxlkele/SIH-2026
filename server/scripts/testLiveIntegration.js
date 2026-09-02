@@ -55,6 +55,8 @@ setTimeout(async () => {
   }
 
   if (!process.exitCode) console.log('ALL CHECKS PASSED');
+  // Set the exit code and let Node exit naturally once handles close, on
+  // its own — don't force process.exit(). A forced exit can race with
+  // native handle teardown (hits a libuv assertion on Windows).
   socket.close();
-  process.exit(process.exitCode || 0);
 }, 1500);

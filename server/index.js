@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 const csv = require('csv-parser');
 const { Readable } = require('stream');
 const fs = require('fs');
@@ -27,6 +28,35 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN
 const app = express();
 app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.text({ type: 'text/csv', limit: '25mb' }));
+
+// Generous by design — this is meant to stop a script hammering the API,
+// not to slow down a person clicking around normally. Only applies to
+// HTTP routes; the live socket 'sample' stream is deliberately NOT
+// limited here — it's the actual live-demo feature sending data
+// continuously at ~50Hz, and the MAX_CONCURRENT_SESSIONS cap below
+// already bounds the real risk (one flooded socket = one subprocess,
+// not many).
+const RATE_LIMIT_PER_MINUTE = Number(process.env.RATE_LIMIT_PER_MINUTE) || 60;
+app.use(rateLimit({
+  windowMs: 60 * 1000,
+  limit: RATE_LIMIT_PER_MINUTE,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'too many requests, slow down' },
+}));
+
+// Off by default — GET /sessions* stays open (current behavior) unless
+// this is explicitly set, so nobody's frontend breaks without warning.
+// Set SESSIONS_API_KEY on Railway and send it as the x-api-key header
+// once the team actually wants session history locked down.
+const SESSIONS_API_KEY = process.env.SESSIONS_API_KEY || null;
+function requireSessionsApiKey(req, res, next) {
+  if (!SESSIONS_API_KEY) return next();
+  if (req.get('x-api-key') !== SESSIONS_API_KEY) {
+    return res.status(401).json({ error: 'missing or invalid x-api-key' });
+  }
+  next();
+}
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -203,11 +233,11 @@ app.post('/replay/:socketId', async (req, res) => {
 });
 
 // Session history — lets the frontend list past runs and replay one by id.
-app.get('/sessions', (req, res) => {
+app.get('/sessions', requireSessionsApiKey, (req, res) => {
   res.json(db.listSessions());
 });
 
-app.get('/sessions/:id', (req, res) => {
+app.get('/sessions/:id', requireSessionsApiKey, (req, res) => {
   const run = db.getSessionRun(req.params.id);
   if (!run) {
     return res.status(404).json({ error: `no session with id ${req.params.id}` });
@@ -251,7 +281,7 @@ function parseSmoothedCsv(filePath) {
 // paths which run the online filter sample-by-sample. Blocks until done;
 // a full session smooths in well under a second, so 202+polling wasn't
 // worth the extra complexity for the demo.
-app.get('/sessions/:id/smoothed', async (req, res) => {
+app.get('/sessions/:id/smoothed', requireSessionsApiKey, async (req, res) => {
   const run = db.getSessionRun(req.params.id);
   if (!run) {
     return res.status(404).json({ error: `no session with id ${req.params.id}` });

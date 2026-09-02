@@ -63,8 +63,11 @@ async function main() {
   }
 
   console.log(ok ? 'SMOOTHER ENDPOINT TEST PASSED' : 'SMOOTHER ENDPOINT TEST FAILED');
+  // Set the exit code and let Node exit naturally once handles close, on
+  // its own — don't force process.exit(). A forced exit can race with
+  // native handle teardown (hits a libuv assertion on Windows).
+  process.exitCode = ok ? 0 : 1;
   socket.close();
-  process.exit(ok ? 0 : 1);
 }
 
 main().catch((err) => {
