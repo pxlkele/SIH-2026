@@ -1,0 +1,270 @@
+import { forwardRef, useEffect, useImperativeHandle, useRef, type RefObject } from "react";
+import mapboxgl from "mapbox-gl";
+import type { FusedResult } from "../data/types";
+
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
+
+/** Layers we know how to render. */
+export type LayerId = "corrected" | "smoothed" | "matched" | "raw" | "ellipse";
+
+export interface MapViewHandle {
+  pushFusedPoint(r: FusedResult): void;
+  pushRawGpsPoint(lat: number, lon: number): void;
+  followVehicle(lat: number, lon: number, headingRad: number): void;
+  setMatchedPath(points: { lat: number; lon: number }[]): void;
+  setSmoothedPath(points: { lat: number; lon: number }[]): void;
+  clear(): void;
+}
+
+interface Props {
+  showLayers: LayerId[];
+  /** Optional: keep another MapView's camera in sync with this one. */
+  syncWith?: RefObject<MapViewHandle | null>;
+}
+
+const INITIAL_CENTER: [number, number] = [77.594, 12.9716];  // Bengaluru (Cubbon Park area)
+const INITIAL_ZOOM = 15;
+
+const PATH_STYLE: Record<LayerId, { color: string; width: number }> = {
+  corrected: { color: "#3b82f6", width: 4 },
+  smoothed:  { color: "#8b5cf6", width: 5 },
+  matched:   { color: "#10b981", width: 6 },
+  raw:       { color: "#ef4444", width: 0 },     // rendered as points, not a line
+  ellipse:   { color: "#3b82f6", width: 0 },
+};
+
+const MapView = forwardRef<MapViewHandle, Props>(function MapView(
+  { showLayers, syncWith },
+  ref,
+) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markerRef = useRef<mapboxgl.Marker | null>(null);
+  const correctedRef = useRef<[number, number][]>([]);   // [lon, lat]
+  const smoothedRef = useRef<[number, number][]>([]);
+  const matchedRef = useRef<[number, number][]>([]);
+  const rawRef = useRef<[number, number][]>([]);
+
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+
+    if (!MAPBOX_TOKEN) {
+      // Fail loudly + clearly so we don't waste time debugging a silent blank map
+      containerRef.current.innerHTML =
+        '<div style="padding:24px;color:#f87171;font-family:monospace;">' +
+        "VITE_MAPBOX_TOKEN not set. Add it to .env.local and reload." +
+        "</div>";
+      return;
+    }
+    mapboxgl.accessToken = MAPBOX_TOKEN;
+
+    const map = new mapboxgl.Map({
+      container: containerRef.current,
+      style: "mapbox://styles/mapbox/dark-v11",
+      center: INITIAL_CENTER,
+      zoom: INITIAL_ZOOM,
+    });
+    mapRef.current = map;
+
+    map.on("load", () => {
+      // Path layers as GeoJSON sources — updates via setData(), no re-render.
+      for (const id of ["corrected", "smoothed", "matched"] as const) {
+        if (!showLayers.includes(id)) continue;
+        map.addSource(id, {
+          type: "geojson",
+          data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [] } },
+        });
+        map.addLayer({
+          id,
+          type: "line",
+          source: id,
+          layout: { "line-join": "round", "line-cap": "round" },
+          paint: {
+            "line-color": PATH_STYLE[id].color,
+            "line-width": PATH_STYLE[id].width,
+            "line-opacity": 0.9,
+          },
+        });
+      }
+
+      if (showLayers.includes("raw")) {
+        map.addSource("raw", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+        map.addLayer({
+          id: "raw",
+          type: "circle",
+          source: "raw",
+          paint: {
+            "circle-radius": 5,
+            "circle-color": PATH_STYLE.raw.color,
+            "circle-stroke-color": "#fff",
+            "circle-stroke-width": 1,
+            "circle-opacity": 0.85,
+          },
+        });
+      }
+
+      if (showLayers.includes("ellipse")) {
+        map.addSource("ellipse", {
+          type: "geojson",
+          data: { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [[]] } },
+        });
+        map.addLayer({
+          id: "ellipse",
+          type: "fill",
+          source: "ellipse",
+          paint: {
+            "fill-color": PATH_STYLE.ellipse.color,
+            "fill-opacity": 0.15,
+          },
+        });
+        map.addLayer({
+          id: "ellipse-outline",
+          type: "line",
+          source: "ellipse",
+          paint: { "line-color": PATH_STYLE.ellipse.color, "line-width": 1, "line-opacity": 0.6 },
+        });
+      }
+
+      const el = document.createElement("div");
+      el.style.width = "16px";
+      el.style.height = "16px";
+      el.style.borderRadius = "50%";
+      el.style.background = "#3b82f6";
+      el.style.border = "3px solid #fff";
+      el.style.boxShadow = "0 0 12px rgba(59,130,246,0.7)";
+      markerRef.current = new mapboxgl.Marker({ element: el }).setLngLat(INITIAL_CENTER).addTo(map);
+    });
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Camera sync between paired maps
+  useEffect(() => {
+    if (!syncWith?.current || !mapRef.current) return;
+    const map = mapRef.current;
+    let syncing = false;
+    const onMove = () => {
+      if (syncing) return;
+      const other = (syncWith.current as any)?._mapInternal as mapboxgl.Map | undefined;
+      if (!other) return;
+      syncing = true;
+      other.jumpTo({ center: map.getCenter(), zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch() });
+      syncing = false;
+    };
+    map.on("move", onMove);
+    return () => { map.off("move", onMove); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncWith]);
+
+  useImperativeHandle(ref, () => ({
+    pushFusedPoint(r) {
+      if (!mapRef.current || r.lat == null || r.lon == null) return;
+      correctedRef.current.push([r.lon, r.lat]);
+      const src = mapRef.current.getSource("corrected") as mapboxgl.GeoJSONSource | undefined;
+      if (src) src.setData({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: correctedRef.current } });
+
+      if (showLayers.includes("ellipse") && r.cov_ee != null && r.cov_nn != null && r.cov_en != null) {
+        const poly = ellipsePolygon(r.lat, r.lon, r.cov_ee, r.cov_en, r.cov_nn);
+        const es = mapRef.current.getSource("ellipse") as mapboxgl.GeoJSONSource | undefined;
+        if (es) es.setData({ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [poly] } });
+      }
+    },
+    pushRawGpsPoint(lat, lon) {
+      if (!mapRef.current) return;
+      rawRef.current.push([lon, lat]);
+      const src = mapRef.current.getSource("raw") as mapboxgl.GeoJSONSource | undefined;
+      if (!src) return;
+      src.setData({
+        type: "FeatureCollection",
+        features: rawRef.current.map(([lo, la]) => ({
+          type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [lo, la] },
+        })),
+      });
+      if (markerRef.current) markerRef.current.setLngLat([lon, lat]);
+    },
+    followVehicle(lat, lon, headingRad) {
+      if (!mapRef.current) return;
+      if (markerRef.current) {
+        markerRef.current.setLngLat([lon, lat]);
+      }
+      mapRef.current.easeTo({ center: [lon, lat], bearing: (headingRad * 180) / Math.PI, duration: 300 });
+    },
+    setMatchedPath(points) {
+      if (!mapRef.current) return;
+      matchedRef.current = points.map((p) => [p.lon, p.lat]);
+      const src = mapRef.current.getSource("matched") as mapboxgl.GeoJSONSource | undefined;
+      if (src) src.setData({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: matchedRef.current } });
+    },
+    setSmoothedPath(points) {
+      if (!mapRef.current) return;
+      smoothedRef.current = points.map((p) => [p.lon, p.lat]);
+      const src = mapRef.current.getSource("smoothed") as mapboxgl.GeoJSONSource | undefined;
+      if (src) src.setData({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: smoothedRef.current } });
+    },
+    clear() {
+      correctedRef.current = [];
+      smoothedRef.current = [];
+      matchedRef.current = [];
+      rawRef.current = [];
+      const map = mapRef.current;
+      if (!map) return;
+      for (const id of ["corrected", "smoothed", "matched"] as const) {
+        const src = map.getSource(id) as mapboxgl.GeoJSONSource | undefined;
+        if (src) src.setData({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [] } });
+      }
+      const rawSrc = map.getSource("raw") as mapboxgl.GeoJSONSource | undefined;
+      if (rawSrc) rawSrc.setData({ type: "FeatureCollection", features: [] });
+    },
+  }));
+
+  return <div ref={containerRef} className="h-full w-full" />;
+});
+
+export default MapView;
+
+/**
+ * Build a 32-vertex ellipse polygon (2-σ) from the 2x2 position covariance.
+ * Eigendecomp of the 2x2:
+ *   λ± = tr/2 ± sqrt(tr²/4 - det)
+ *   rotation = atan2(2·cov_en, cov_ee - cov_nn) / 2
+ * Returns [lon, lat] ring closed on itself.
+ */
+function ellipsePolygon(
+  lat: number, lon: number,
+  covEE: number, covEN: number, covNN: number,
+): [number, number][] {
+  const tr = covEE + covNN;
+  const det = covEE * covNN - covEN * covEN;
+  const disc = Math.sqrt(Math.max(0, (tr * tr) / 4 - det));
+  const lambdaMajor = tr / 2 + disc;
+  const lambdaMinor = Math.max(1, tr / 2 - disc);  // floor at 1 m² to avoid degenerate zero-thin lines
+  const semiMajor = 2 * Math.sqrt(lambdaMajor);
+  const semiMinor = 2 * Math.sqrt(lambdaMinor);
+  const rotation = Math.atan2(2 * covEN, covEE - covNN) / 2;
+
+  const N = 32;
+  const cosLat = Math.cos((lat * Math.PI) / 180);
+  const metersPerDegLat = 111_320;
+  const metersPerDegLon = metersPerDegLat * cosLat;
+
+  const ring: [number, number][] = [];
+  for (let i = 0; i <= N; i++) {
+    const t = (i / N) * 2 * Math.PI;
+    const ex = semiMajor * Math.cos(t);
+    const ey = semiMinor * Math.sin(t);
+    // rotate by ellipse orientation (from East axis, in ENU): rotate (ex, ey)
+    const east = ex * Math.cos(rotation) - ey * Math.sin(rotation);
+    const north = ex * Math.sin(rotation) + ey * Math.cos(rotation);
+    const dLon = east / metersPerDegLon;
+    const dLat = north / metersPerDegLat;
+    ring.push([lon + dLon, lat + dLat]);
+  }
+  return ring;
+}

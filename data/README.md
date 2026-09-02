@@ -38,10 +38,21 @@ forward-filled). Aleena's backend accepts these directly.
 ### `real/ios_drive_2026-08-29.csv`
 - **Source:** `2026-08-29_10_35_46_my_iOS_device.csv`
 - **Duration:** ~150 s (2.5 min), 4663 IMU samples (~31 Hz), 52 GPS fixes
-- **Purpose:** **first tuning-grade real log.** Used to set the current default
-  `accel_process_std=2.0` — see `model/README.md` for the full sweep and numbers.
-- **Missing:** a real GPS-outage segment (tunnel/basement). The demo pitch
-  will need this before final tuning is locked.
+- **Purpose:** first log at drive-scale duration; but actual movement was only ~90 m (walking around campus, not driving). Used to set the initial `accel_process_std=2.0`.
+
+### `real/ios_drive_2026-09-02a.csv`
+- **Source:** `2026-09-02_17_28_22_my_iOS_device.csv`
+- **Duration:** ~7.1 min, 14227 IMU samples (~33 Hz), 431 GPS fixes
+- **Movement:** 1.8 km × 1.2 km bounds, ~3.2 km driven, North Bengaluru
+- **Purpose:** **first real drive log at driving-scale movement.** Kalman tracks raw GPS to **2.3 m mean drift** across the full drive; RTS-smoothed to **1.7 m**.
+- **Missing:** no GPS-outage segment (healthy 1 Hz GPS throughout, max 1s gap).
+
+### `real/ios_drive_2026-09-02b.csv`
+- **Source:** `2026-09-02_17_35_41_my_iOS_device.csv`
+- **Duration:** ~9.5 min, 18912 IMU samples (~33 Hz), 571 GPS fixes
+- **Movement:** 3.2 km × 1.2 km bounds, ~4.7 km driven, North Bengaluru
+- **Purpose:** longest real drive log to date. Kalman tracks to **3.0 m mean** (RTS-smoothed to **2.1 m**), path length within 1% of raw GPS.
+- **Missing:** same as above — no GPS-outage segment. The tunnel/basement capture remains the biggest data gap for the pitch.
 
 ## Adding a new real log
 

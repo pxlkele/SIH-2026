@@ -1,7 +1,18 @@
 # Charvi — To-Do
 
-**Role:** Frontend — React + shadcn/ui + Tailwind, deployed to Vercel
-## To make a dynamic interactive frontend
+**Role:** Frontend co-owner — **design + polish lead**
+
+> **Ownership shift (2026-09-03):** Palak is taking on the frontend build
+> infrastructure (Vite + React + Mapbox + Socket.io wiring + Tier 1 feature
+> plumbing) so we don't lose the schedule. **You're still on frontend as
+> co-owner** — focused on the parts you're strongest at: visual design,
+> typography, animations, layout, the awwwards-inspiration feel. Palak's
+> code will work; your job is to make it *look like it belongs on the
+> awwwards front page.*
+>
+> Stack is locked: **Vite + React + shadcn/ui + Tailwind + Mapbox GL JS**,
+> deployed to Vercel. Lives at `web/`. See `todos/palak.md` for the
+> infrastructure/wiring items so you know what Palak is building.
 
 ## Two modes — keep them separate
 
@@ -74,8 +85,18 @@ The backend has a post-run smoother — RTS backward pass over a completed sessi
 
 ---
 
-## Optional polish (only if the two modes are solid)
-- [ ] Framer Motion path-drawing animation for the payoff moment on run replay
+## Design + polish (your primary lane)
+
+The infrastructure Palak ships will be functional but visually plain. Your job is turning it into something judges remember.
+
+- [ ] **Color system** — pick a palette that reads well on both light AND projector conditions. The four path colors (raw / corrected / smoothed / road-snapped) all need to be distinguishable at a glance.
+- [ ] **Typography scale** — HUD numbers, layer legend, "GPS LOST" pill. Tabular numerals for the drift counter so digits don't jiggle.
+- [ ] **Micro-animations** — Framer Motion for: path-drawing on replay, confidence ellipse breathing when large, marker rotation smoothing, HUD counter transitions
+- [ ] **Landing page** — the entry point before either view. Sets the tone. Look at the awwwards links you saved for inspiration.
+- [ ] **"See Demo" hero moment** — when the split-screen view loads, one clean animated intro that shows judges what they're about to see (2-3 seconds max)
+- [ ] **Dark mode** — projector rooms are usually dim; a dark-theme option makes the paths pop way more
+- [ ] **Loading / connecting states** — no jarring blanks when socket connects or replay is loading
+- [ ] **Vercel deploy final polish** — favicon, meta tags, share preview card
 
 ## Deploy + demo
 - [ ] Deploy to Vercel
