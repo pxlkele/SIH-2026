@@ -27,7 +27,7 @@ const BACKEND_CONFIGURED = Boolean(import.meta.env.VITE_BACKEND_URL);
 export default function MainApp() {
   const mapRef = useRef<MapViewHandle>(null);
   const [showSearch, setShowSearch] = useState(false);
-  const [sourceMode, setSourceMode] = useState<SourceMode>("replay");
+  const [sourceMode, setSourceMode] = useState<SourceMode>("live");
   const [liveStatus, setLiveStatus] = useState<LiveStreamStatus>({ kind: "idle" });
 
   const { latestFused, isDRActive } = useFusionStream({
@@ -81,7 +81,7 @@ export default function MainApp() {
 
   return (
     <div className="relative h-[100dvh] w-screen overflow-hidden bg-ink-950 text-ink-100">
-      <MapView ref={mapRef} showLayers={["route", "corrected", "ellipse"]} />
+      <MapView ref={mapRef} showLayers={["route", "corrected", "ellipse"]} initialStyle="satellite" />
 
       {/* Top nav */}
       <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-between p-3 sm:p-4">

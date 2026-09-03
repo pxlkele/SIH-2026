@@ -17,7 +17,7 @@ const OPTIONS: { key: MapStyle; label: string; icon: any }[] = [
  * Segmented control that lets the user flip the Mapbox base style at
  * runtime. Purely presentational — the parent owns the setStyle() call.
  */
-export function MapStyleToggle({ onChange, initial = "dark" }: Props) {
+export function MapStyleToggle({ onChange, initial = "satellite" }: Props) {
   const [active, setActive] = useState<MapStyle>(initial);
   return (
     <div className="inline-flex items-center gap-0.5 rounded-md border border-ink-700 bg-ink-900/85 p-0.5 backdrop-blur">

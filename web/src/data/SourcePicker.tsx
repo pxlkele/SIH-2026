@@ -1,4 +1,4 @@
-import { Play, Radio, Wifi } from "lucide-react";
+import { Radio, Wifi } from "lucide-react";
 import type { SourceMode } from "./useFusionStream";
 
 interface Props {
@@ -7,10 +7,13 @@ interface Props {
   backendConfigured: boolean;
 }
 
+// The /app view is the "product" surface — real users care about live vs
+// cloud, not about internal replay of a pre-recorded drive. Replay lives on
+// the home/landing page (Charvi's) as a "try it without giving permissions"
+// entry point.
 const OPTIONS: { key: SourceMode; label: string; icon: any; hint: string }[] = [
-  { key: "live",    label: "Live",    icon: Radio, hint: "Phone IMU + GPS, on-device Kalman" },
-  { key: "replay",  label: "Replay",  icon: Play,  hint: "Pre-recorded 3.2 km drive" },
-  { key: "backend", label: "Cloud",   icon: Wifi,  hint: "Aleena's backend (needs VITE_BACKEND_URL)" },
+  { key: "live",    label: "Live",  icon: Radio, hint: "Phone IMU + GPS, on-device Kalman" },
+  { key: "backend", label: "Cloud", icon: Wifi,  hint: "Aleena's backend (needs VITE_BACKEND_URL)" },
 ];
 
 /**

@@ -11,6 +11,7 @@ interface Props {
 // Preset destinations near the demo drive area (North Bengaluru).
 // One-tap shortcuts so the demo doesn't require typing.
 const PRESETS: { label: string; lat: number; lon: number; name: string }[] = [
+  { label: "Phoenix Mall of Asia", name: "Phoenix Mall of Asia, Bengaluru", lat: 13.0996, lon: 77.5928 },
   { label: "MG Road", name: "MG Road, Bengaluru",       lat: 12.9760, lon: 77.6060 },
   { label: "Hebbal", name: "Hebbal, Bengaluru",         lat: 13.0355, lon: 77.5970 },
   { label: "Cubbon Park", name: "Cubbon Park, Bengaluru", lat: 12.9764, lon: 77.5929 },

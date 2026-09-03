@@ -16,6 +16,9 @@ export default function DemoView() {
   const fusedMapRef = useRef<MapViewHandle>(null);
 
   const { latestFused, isDRActive, gpsLostSeconds, driftMeters } = useFusionStream({
+    // /demo always plays back the pre-recorded 3.2 km real drive — that's
+    // the pitch showcase, decoupled from whatever /app is doing.
+    mode: "replay",
     onFusedResult: (r) => {
       fusedMapRef.current?.pushFusedPoint(r);
       if (r.gps_used && r.lat != null && r.lon != null) {
@@ -41,7 +44,7 @@ export default function DemoView() {
       <div className="relative min-h-0 flex-1">
         <div className="grid h-full w-full grid-cols-1 grid-rows-2 md:grid-cols-2 md:grid-rows-1">
           <PanelWrap side="left">
-            <MapView ref={rawMapRef} showLayers={["raw"]} syncWith={fusedMapRef} />
+            <MapView ref={rawMapRef} showLayers={["raw"]} syncWith={fusedMapRef} initialStyle="satellite" />
             <PanelLabel
               accent="raw"
               title="Raw GPS"
@@ -53,6 +56,7 @@ export default function DemoView() {
               ref={fusedMapRef}
               showLayers={["corrected", "matched", "ellipse"]}
               syncWith={rawMapRef}
+              initialStyle="satellite"
             />
             <PanelLabel
               accent="live"
