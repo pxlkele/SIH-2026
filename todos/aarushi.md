@@ -3,9 +3,9 @@
 **Role:** Documentation
 
 ## Submission-facing
-- [ ] Project README: problem statement (SIH26168), approach, tech stack, how to run
-- [ ] Architecture diagram: sensor → backend → Kalman → frontend map
-- [ ] Data flow doc referencing the locked `data_schema.md`
+- [x] Project README: problem statement (SIH26168), approach, tech stack, how to run
+- [x] Architecture diagram: sensor → backend → Kalman → frontend map
+- [x] Data flow doc referencing the locked `data_schema.md`
 - [ ] Screenshots / demo GIF of the raw-vs-corrected path payoff moment
 
 ## Judge-facing
