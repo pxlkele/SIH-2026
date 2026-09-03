@@ -5,29 +5,29 @@
 ## Setup — install / download first
 
 ### System-level (once per machine)
-- [ ] **Node.js LTS** (v20 or v22) — https://nodejs.org
-- [ ] **Python 3.11+** — the backend spawns `model/serve_stdio.py` as a subprocess, so Python must be available on whatever machine runs the backend
-- [ ] Git (probably already installed)
+- [x] **Node.js LTS** — running v24 (newer than the v20/v22 suggestion; fine, `better-sqlite3` actually requires ≥22)
+- [x] **Python 3.11+** — 3.13 installed; the backend spawns `model/serve_stdio.py` as a subprocess
+- [x] Git
 
 ### Backend Node deps (create `server/package.json`)
 Minimum:
 - [x] `express` (^5) — using v5, not v4; socket.io doesn't route through express so this is safe, just watch for v5's changed path-matching syntax (bare `*` wildcards, `req.query`) if adding HTTP routes later
-- [ ] `socket.io` (^4)
-- [ ] `cors` (^2)
-- [ ] `nodemon` (^3, dev-only)
+- [x] `socket.io` (^4)
+- [x] `cors` (^2)
+- [x] `nodemon` (^3, dev-only)
 
 Optional but useful:
-- [ ] `pino` or `morgan` — request/event logging (will save time debugging the live demo)
-- [ ] `dotenv` — if she wants `.env` for host/port config
-- [ ] `csv-parser` — for the replayed-log fallback path (reading Raga's CSV)
-- [ ] `better-sqlite3` — if storage = SQLite (see Storage section)
+- [ ] `pino` or `morgan` — skipped, not needed. Console logging has been sufficient; revisit only if debugging the live demo gets hard to follow
+- [ ] `dotenv` — skipped, not needed. Railway injects environment variables natively; no `.env` file required in deployment
+- [x] `csv-parser` — for the replayed-log fallback path
+- [x] `better-sqlite3` — storage = SQLite
 
 ### Python side (for the subprocess)
-- [ ] `cd model && pip install -r requirements.txt` — numpy + pandas, that's it. `serve_stdio.py` is otherwise stdlib.
+- [x] `cd model && pip install -r requirements.txt` — numpy + pandas. Also baked into the deploy `Dockerfile`.
 
 ### Testing / dev tools (nice-to-have)
-- [ ] `wscat` (`npm i -g wscat`) — manual WebSocket poking
-- [ ] `socket.io-client` — for any programmatic tests
+- [ ] `wscat` — skipped, not needed. `socket.io-client` covered every programmatic test written this project
+- [x] `socket.io-client` — used throughout `server/scripts/test*.js`
 
 ### What NOT to install
 - The Kalman filter itself — already in `model/`. Just spawn `serve_stdio.py`; parity with batch is proven by `model/smoke_stdio.py`.
@@ -96,7 +96,10 @@ Charvi will render a third path layer that snaps the corrected trajectory to act
 - [x] Proved the Docker image works, not just that it builds — ran the full test suite (`testLiveIntegration.js`, `smokeTestRealData.js`, `testMapMatchIntegration.js`) against a locally-run container reachable only through its exposed port, same as a real host would run it. All passed, including the outbound call to OSRM from inside the container.
 - [x] Deployed to Railway — **not via GitHub connect**: the repo is owned by `pxlkele`'s GitHub account, and Railway's GitHub App can only be authorized by the repo owner, not a collaborator. Used the Railway CLI instead (`railway login` → `railway init` → `railway up`), which uploads local code directly and sidesteps repo-ownership entirely. Live at **https://sih-2026-backend-production.up.railway.app**. Downside: no auto-redeploy on push to `main` yet — `railway up` needs to be re-run manually after changes, or pxlkele connects GitHub later for that
 - [x] Re-ran the smoke tests above against the live Railway URL (not just the local container) — all three passed (`testLiveIntegration.js`, `smokeTestRealData.js`, `testMapMatchIntegration.js`), including a real fused_result/matched_path round trip and an outbound OSRM call from Railway's network. Scripts now take `BACKEND_URL` env var so this is repeatable against any deploy
-- [ ] Smoke-test against Charvi's Vercel frontend once it exists — set `CORS_ORIGIN` env var (`railway variable set CORS_ORIGIN=<her URL>`) to replace the current wildcard `*`. Now accepts a comma-separated list (see Security below), so localhost can stay allowed alongside her URL for dev testing
+- [ ] Smoke-test against the deployed frontend once it exists — set `CORS_ORIGIN` env var (`railway variable set CORS_ORIGIN=<URL>`) to replace the current wildcard `*`. Now accepts a comma-separated list (see Security below), so localhost can stay allowed alongside it for dev testing
+  - **Lower urgency than it looks (2026-09-03):** ownership shifted — Palak now owns `/app` + `/demo`, Charvi owns the `/` marketing site. More importantly, the frontend's data-source picker defaults to `replay` (bundled static CSVs) or `live` (on-device TS Kalman filter, ported from this backend's Python) — **neither needs this backend at all.** `backend` mode (the real Socket.io pipeline) is now an optional third mode, not the default demo path. Still worth having working as a bonus/proof-point, just not blocking.
+- [ ] **Tell Palak the backend is live** — their todo (`todos/palak.md`) still lists "sign off on backend hosting choice with Aleena" as an open blocker even though this has been resolved for a while. Send: `https://sih-2026-backend-production.up.railway.app`
+- [ ] **Alias `GET /session/:id/smoothed` → the existing `/sessions/:id/smoothed` handler.** Confirmed still a live risk, not just a documentation typo — Palak's todo (`todos/palak.md` → "Post-run RTS smoothed layer") still references the singular path as an unimplemented item. Cheap, additive fix; removes a guaranteed 404 whenever they wire it up.
 - [ ] Test end-to-end in venue-like network conditions
 - [ ] *(Optional)* SQLite storage is ephemeral on Railway unless a Volume is mounted — data resets on redeploy. Fine for a hackathon demo; mention to the team if session history needs to survive restarts
 
