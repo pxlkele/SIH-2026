@@ -16,6 +16,7 @@ import {
 import { motion } from "motion/react";
 import { Wordmark } from "../components/Logo";
 import { RouteMapPreview } from "../components/RouteMapPreview";
+import { OfflineCacheButton } from "../data/OfflineCacheButton";
 
 /**
  * Home page — landing at `/` after the loader fades out.
@@ -196,7 +197,7 @@ function SettingsSheet({ onClose }: { onClose: () => void }) {
             <X size={16} />
           </button>
         </div>
-        <ul className="flex-1 divide-y divide-ink-800/60">
+        <ul className="divide-y divide-ink-800/60">
           {items.map((it) => (
             <li key={it.label}>
               <button
@@ -213,7 +214,23 @@ function SettingsSheet({ onClose }: { onClose: () => void }) {
             </li>
           ))}
         </ul>
-        <div className="border-t border-ink-800 p-4 text-xs text-ink-500">
+
+        {/* Offline caching: proactively download every Mapbox tile inside
+            the demo route's bbox so the app renders the area with no network.
+            Complements the passive tile cache the service worker builds as
+            you use the app. */}
+        <div className="border-t border-ink-800 px-5 py-4">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-400">
+            Offline
+          </div>
+          <p className="mb-3 text-xs text-ink-500">
+            Cache map tiles for the demo drive area so the app renders even
+            with no network (airplane mode, dead zones).
+          </p>
+          <OfflineCacheButton />
+        </div>
+
+        <div className="mt-auto border-t border-ink-800 p-4 text-xs text-ink-500">
           Auth + drive history land after the hackathon. Everything runs
           locally on-device for now.
         </div>
