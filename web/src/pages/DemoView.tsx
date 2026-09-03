@@ -1,31 +1,94 @@
-import { useRef } from "react";
-import { AlertTriangle, ChevronLeft, Radio } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { AlertTriangle, ChevronDown, ChevronLeft, Radio } from "lucide-react";
 import MapView, { type MapViewHandle } from "../map/MapView";
 import { MapStyleToggle } from "../map/MapStyleToggle";
 import { useFusionStream } from "../data/useFusionStream";
+import { startSessionReplay } from "../data/sessionReplay";
+import { listSessions, type SessionSummary } from "../data/sessionStore";
+import type { FusedResult } from "../data/types";
 import { Wordmark } from "../components/Logo";
 import { LinkButton, Panel, Pill } from "../components/ui";
+
+const SAMPLE_SOURCE = "__sample__";
 
 /**
  * `/demo` — the pitch showcase. Split-screen (side-by-side on desktop,
  * stacked on mobile), synchronised cameras, GPS-lost centre pill, live
  * drift-counter HUD.
+ *
+ * Data source is switchable via the header dropdown: the built-in 3.2 km
+ * sample drive, or any session recorded locally via /app.
  */
 export default function DemoView() {
   const rawMapRef = useRef<MapViewHandle>(null);
   const fusedMapRef = useRef<MapViewHandle>(null);
+  const [sourceId, setSourceId] = useState<string>(SAMPLE_SOURCE);
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [sessionState, setSessionState] = useState<{
+    latestFused: FusedResult | null;
+    isDRActive: boolean;
+    gpsLostSeconds: number;
+    driftMeters: number | null;
+  }>({ latestFused: null, isDRActive: false, gpsLostSeconds: 0, driftMeters: null });
 
-  const { latestFused, isDRActive, gpsLostSeconds, driftMeters } = useFusionStream({
-    // /demo always plays back the pre-recorded 3.2 km real drive — that's
-    // the pitch showcase, decoupled from whatever /app is doing.
-    mode: "replay",
-    onFusedResult: (r) => {
-      fusedMapRef.current?.pushFusedPoint(r);
-      if (r.gps_used && r.lat != null && r.lon != null) {
-        rawMapRef.current?.pushRawGpsPoint(r.lat, r.lon);
+  // Load available recorded sessions once + refresh when we return here
+  useEffect(() => {
+    void listSessions().then(setSessions);
+  }, []);
+
+  // Sample-drive replay is handled by useFusionStream when sourceId is the
+  // sample. Recorded-session replay is a manual side-effect below — same
+  // wire shape, just a different source.
+  const sampleActive = sourceId === SAMPLE_SOURCE;
+  const { latestFused: sampleFused, isDRActive: sampleDR, gpsLostSeconds: sampleLost, driftMeters: sampleDrift } =
+    useFusionStream({
+      mode: sampleActive ? "replay" : "backend", // "backend" is inactive when VITE_BACKEND_URL isn't set
+      onFusedResult: sampleActive
+        ? (r) => {
+            rawMapRef.current && r.gps_used && r.lat != null && r.lon != null
+              ? rawMapRef.current.pushRawGpsPoint(r.lat, r.lon)
+              : null;
+            fusedMapRef.current?.pushFusedPoint(r);
+          }
+        : undefined,
+    });
+
+  // Session replay: when sourceId is a session, spin up a replay stream and
+  // drive both maps ourselves. Clear the maps on switch so paths don't stack.
+  useEffect(() => {
+    if (sourceId === SAMPLE_SOURCE) return;
+    rawMapRef.current?.clear();
+    fusedMapRef.current?.clear();
+    setSessionState({ latestFused: null, isDRActive: false, gpsLostSeconds: 0, driftMeters: null });
+
+    let stopFn: (() => void) | null = null;
+    let cancelled = false;
+    void startSessionReplay({
+      sessionId: sourceId,
+      onFusedResult: (r) => {
+        if (cancelled) return;
+        rawMapRef.current?.pushRawGpsPoint(r.lat!, r.lon!);
+        fusedMapRef.current?.pushFusedPoint(r);
+        setSessionState((prev) => ({ ...prev, latestFused: r }));
+      },
+    }).then((handle) => {
+      if (cancelled) {
+        handle?.stop();
+        return;
       }
-    },
-  });
+      stopFn = handle?.stop ?? null;
+    });
+
+    return () => {
+      cancelled = true;
+      stopFn?.();
+    };
+  }, [sourceId]);
+
+  const latestFused = sampleActive ? sampleFused : sessionState.latestFused;
+  const isDRActive = sampleActive ? sampleDR : sessionState.isDRActive;
+  const gpsLostSeconds = sampleActive ? sampleLost : sessionState.gpsLostSeconds;
+  const driftMeters = sampleActive ? sampleDrift : sessionState.driftMeters;
 
   const uncertainty =
     latestFused && latestFused.std_e_m != null && latestFused.std_n_m != null
@@ -35,6 +98,9 @@ export default function DemoView() {
   return (
     <div className="relative flex h-[100dvh] w-screen flex-col overflow-hidden bg-ink-950 text-ink-100">
       <DemoHeader
+        sessions={sessions}
+        sourceId={sourceId}
+        onSourceChange={setSourceId}
         onStyleChange={(s) => {
           rawMapRef.current?.setStyle(s);
           fusedMapRef.current?.setStyle(s);
@@ -45,11 +111,7 @@ export default function DemoView() {
         <div className="grid h-full w-full grid-cols-1 grid-rows-2 md:grid-cols-2 md:grid-rows-1">
           <PanelWrap side="left">
             <MapView ref={rawMapRef} showLayers={["raw"]} syncWith={fusedMapRef} initialStyle="satellite" />
-            <PanelLabel
-              accent="raw"
-              title="Raw GPS"
-              subtitle="what Google Maps sees"
-            />
+            <PanelLabel accent="raw" title="Raw GPS" subtitle="what Google Maps sees" />
           </PanelWrap>
           <PanelWrap side="right">
             <MapView
@@ -58,11 +120,7 @@ export default function DemoView() {
               syncWith={rawMapRef}
               initialStyle="satellite"
             />
-            <PanelLabel
-              accent="live"
-              title="Kalman-fused"
-              subtitle="our system"
-            />
+            <PanelLabel accent="live" title="Kalman-fused" subtitle="our system" />
           </PanelWrap>
         </div>
 
@@ -88,8 +146,14 @@ export default function DemoView() {
 }
 
 function DemoHeader({
+  sessions,
+  sourceId,
+  onSourceChange,
   onStyleChange,
 }: {
+  sessions: SessionSummary[];
+  sourceId: string;
+  onSourceChange: (id: string) => void;
   onStyleChange: (s: import("../map/MapView").MapStyle) => void;
 }) {
   return (
@@ -104,6 +168,11 @@ function DemoHeader({
         </div>
       </div>
       <div className="flex items-center gap-2">
+        <SessionPicker
+          sessions={sessions}
+          sourceId={sourceId}
+          onChange={onSourceChange}
+        />
         <MapStyleToggle onChange={onStyleChange} />
         <Pill tone="accent" dot>
           <Radio size={11} /> Live
@@ -111,6 +180,58 @@ function DemoHeader({
       </div>
     </header>
   );
+}
+
+function SessionPicker({
+  sessions,
+  sourceId,
+  onChange,
+}: {
+  sessions: SessionSummary[];
+  sourceId: string;
+  onChange: (id: string) => void;
+}) {
+  const isSample = sourceId === SAMPLE_SOURCE;
+  const active = isSample
+    ? "Sample drive"
+    : sessions.find((s) => s.id === sourceId)?.destinationName ??
+      formatWhen(sessions.find((s) => s.id === sourceId)?.startedAt);
+  return (
+    <div className="relative inline-block">
+      <select
+        value={sourceId}
+        onChange={(e) => onChange(e.target.value)}
+        className="peer appearance-none rounded-md border border-ink-700 bg-ink-900/85 px-3 py-1.5 pr-8 text-xs font-medium text-ink-200 backdrop-blur transition hover:border-ink-500 focus:outline-none focus:ring-1 focus:ring-accent-bright"
+        aria-label="Select replay source"
+      >
+        <option value={SAMPLE_SOURCE}>Sample drive · 3.2 km</option>
+        {sessions.length > 0 && <option disabled>──────────</option>}
+        {sessions.map((s) => (
+          <option key={s.id} value={s.id}>
+            {(s.destinationName ?? "Untitled") + " · " + formatWhen(s.startedAt) +
+              " · " + (s.distanceM / 1000).toFixed(1) + " km"}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        size={12}
+        className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-ink-400"
+      />
+      {/* Screen-reader-friendly current label — the styled version is the <select> itself */}
+      <span className="sr-only">Currently viewing: {active}</span>
+    </div>
+  );
+}
+
+function formatWhen(ts?: number): string {
+  if (!ts) return "";
+  const d = new Date(ts);
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function PanelWrap({
