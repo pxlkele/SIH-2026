@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, Crosshair, Search } from "lucide-react";
+import { ChevronLeft, Crosshair, Loader2, MapPinOff, Search } from "lucide-react";
 import MapView, { type MapViewHandle } from "../map/MapView";
 import { MapStyleToggle } from "../map/MapStyleToggle";
 import { useFusionStream } from "../data/useFusionStream";
@@ -38,7 +38,7 @@ export default function MainApp() {
 
   // Definitive current position — always driven by raw geolocation so it
   // works on desktop too.
-  const { fix: rawFix, error: geoError } = useRawGeolocation();
+  const { fix: rawFix, error: geoError, permission: geoPermission, isRequesting: geoLoading, requestFresh: requestFreshFix } = useRawGeolocation();
 
   // Fused stream draws the corrected path + ellipse (mobile only in practice)
   const { latestFused } = useFusionStream({
@@ -67,11 +67,8 @@ export default function MainApp() {
     return () => unsubscribe?.();
   }, []);
 
-  // Pan the map on every raw GPS fix (respecting user-interaction flag).
-  // Fused samples override this via followVehicle when they arrive.
-  useEffect(() => {
-    if (rawFix) mapRef.current?.panTo(rawFix.lat, rawFix.lon);
-  }, [rawFix]);
+  // (Raw-fix panning handled below via lastFixTimestampRef so we only
+  //  react to actually-new fixes, not stale ones on re-render.)
 
   // Fused samples: full follow-vehicle (heading-up tilt look).
   useEffect(() => {
@@ -137,28 +134,24 @@ export default function MainApp() {
     };
   }, []);
 
-  // Recenter handler — Google-Maps behavior. Force a fresh geolocation
-  // request (re-prompts permission if user dismissed it earlier), then pan
-  // + zoom to that fix. Falls back to whatever cached position we have.
+  // Recenter handler. Immediately snaps to any cached position for
+  // instant feedback, then triggers a fresh geolocation request via the
+  // shared hook (which handles permission state, spinner, and errors).
   const handleRecenter = () => {
-    // Immediately snap to any cached position for instant feedback
     if (rawFix) mapRef.current?.panTo(rawFix.lat, rawFix.lon);
     mapRef.current?.recenter();
-    // Also request a fresh fix — this triggers the permission prompt if
-    // needed, and gives a more accurate/current position than watchPosition
-    // may have last cached.
-    if (!("geolocation" in navigator)) return;
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        mapRef.current?.panTo(pos.coords.latitude, pos.coords.longitude);
-        mapRef.current?.recenter();
-      },
-      (err) => {
-        console.warn("[recenter] fresh fix failed", err.code, err.message);
-      },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 },
-    );
+    requestFreshFix();
   };
+
+  // When a fresh fix comes in, always snap the map to it — that's what the
+  // user just asked for.
+  const lastFixTimestampRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (rawFix && rawFix.timestamp !== lastFixTimestampRef.current) {
+      lastFixTimestampRef.current = rawFix.timestamp;
+      mapRef.current?.panTo(rawFix.lat, rawFix.lon);
+    }
+  }, [rawFix]);
 
   const uncertainty =
     latestFused && latestFused.std_e_m != null && latestFused.std_n_m != null
@@ -209,21 +202,32 @@ export default function MainApp() {
         </div>
       )}
 
-      {/* Recenter button — Google-Maps style. On tap: force a fresh
-          getCurrentPosition (re-prompts permission if needed), then pan +
-          zoom in + tilt. Works even if the passive watchPosition hadn't
-          fired yet or if the user had denied earlier. */}
+      {/* Recenter button — Google-Maps style. Always tappable. Shows a
+          spinner while a fresh geolocation request is in flight, and a
+          "no location" icon if permission has been denied. */}
       <button
         onClick={handleRecenter}
         className={
           "pointer-events-auto absolute bottom-40 right-4 z-20 flex h-11 w-11 items-center justify-center rounded-full border shadow-raised backdrop-blur transition sm:bottom-44 " +
-          (userMovedMap
-            ? "border-accent-line bg-accent text-white hover:bg-accent-bright"
-            : "border-ink-700 bg-ink-900/85 text-accent-bright hover:bg-ink-800")
+          (geoPermission === "denied"
+            ? "border-status-alert/60 bg-status-alert/15 text-status-alert hover:bg-status-alert/25"
+            : userMovedMap
+              ? "border-accent-line bg-accent text-white hover:bg-accent-bright"
+              : "border-ink-700 bg-ink-900/85 text-accent-bright hover:bg-ink-800")
         }
-        aria-label="Center on my location"
+        aria-label={
+          geoPermission === "denied"
+            ? "Location permission denied"
+            : "Center on my location"
+        }
       >
-        <Crosshair size={18} />
+        {geoLoading ? (
+          <Loader2 size={18} className="animate-spin" />
+        ) : geoPermission === "denied" ? (
+          <MapPinOff size={18} />
+        ) : (
+          <Crosshair size={18} />
+        )}
       </button>
 
       {/* Search overlay */}

@@ -47,8 +47,11 @@ interface Props {
   syncWith?: RefObject<MapViewHandle | null>;
 }
 
-const INITIAL_CENTER: [number, number] = [77.594, 12.9716];  // Bengaluru (Cubbon Park area)
-const INITIAL_ZOOM = 15;
+// North Bengaluru near MAHE / where the real 09-02 drive log is anchored.
+// This is only the *fallback* if we haven't received a real location fix
+// yet — as soon as GPS gives us anything, the map jumps to it.
+const INITIAL_CENTER: [number, number] = [77.5900, 13.1258];
+const INITIAL_ZOOM = 13;
 
 const PATH_STYLE: Record<LayerId, { color: string; width: number }> = {
   corrected: { color: "#3b82f6", width: 4 },
