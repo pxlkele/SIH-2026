@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, Crosshair, Search } from "lucide-react";
+import { Car, ChevronLeft, Crosshair, Footprints, Pause, Search } from "lucide-react";
 import MapView, { type MapViewHandle } from "../map/MapView";
 import { MapStyleToggle } from "../map/MapStyleToggle";
 import { useFusionStream } from "../data/useFusionStream";
 import { useRawGeolocation } from "../data/useRawGeolocation";
+import type { MotionMode } from "../motion/classifier";
 import { useNavigation } from "../nav/useNavigation";
 import { NavSearch } from "../nav/NavSearch";
 import { NavDirectionsPanel } from "../nav/NavDirectionsPanel";
@@ -24,6 +25,8 @@ export default function MainApp() {
   const mapRef = useRef<MapViewHandle>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [userMovedMap, setUserMovedMap] = useState(false);
+  const [motionMode, setMotionMode] = useState<MotionMode | null>(null);
+  const [motionConfidence, setMotionConfidence] = useState<number>(0);
 
   // Definitive current position — always driven by raw geolocation so it
   // works on desktop too.
@@ -33,6 +36,10 @@ export default function MainApp() {
   const { latestFused } = useFusionStream({
     mode: "live",
     onFusedResult: (r) => mapRef.current?.pushFusedPoint(r),
+    onMotionMode: (m, probs) => {
+      setMotionMode(m);
+      setMotionConfidence(probs[m]);
+    },
   });
 
   // Recenter-button subscription
@@ -114,11 +121,19 @@ export default function MainApp() {
         </div>
       </header>
 
+      {/* Motion-mode pill — small badge below the top nav showing what the
+          on-device classifier thinks the vehicle is doing right now. */}
+      {motionMode && (
+        <div className="pointer-events-none absolute inset-x-0 top-16 z-10 flex justify-center px-3">
+          <MotionModePill mode={motionMode} confidence={motionConfidence} />
+        </div>
+      )}
+
       {/* Only surfaces permission-denied errors. Transient GPS timeouts
           stay quiet. If you're not sharing location you can still route
           from wherever the map is pointing. */}
       {geoError && (
-        <div className="pointer-events-none absolute inset-x-0 top-16 z-10 flex justify-center px-3">
+        <div className="pointer-events-none absolute inset-x-0 top-28 z-10 flex justify-center px-3">
           <div className="pointer-events-auto rounded-md border border-status-alert/60 bg-status-alert/10 px-3 py-2 text-xs text-status-alert">
             {geoError}
           </div>
@@ -230,4 +245,26 @@ function normalizeHeadingDeg(rad: number): number {
   while (deg < 0) deg += 360;
   while (deg >= 360) deg -= 360;
   return deg;
+}
+
+function MotionModePill({
+  mode,
+  confidence,
+}: {
+  mode: MotionMode;
+  confidence: number;
+}) {
+  const cfg: Record<MotionMode, { icon: React.ReactNode; label: string }> = {
+    driving:    { icon: <Car size={12} />,         label: "Driving" },
+    walking:    { icon: <Footprints size={12} />,  label: "Walking" },
+    stationary: { icon: <Pause size={12} />,       label: "Stationary" },
+  };
+  const c = cfg[mode];
+  return (
+    <div className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-accent-line bg-ink-900/85 px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider text-accent-bright backdrop-blur">
+      {c.icon}
+      <span>{c.label}</span>
+      <span className="tabular-nums text-ink-500">{Math.round(confidence * 100)}%</span>
+    </div>
+  );
 }

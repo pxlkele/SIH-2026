@@ -14,6 +14,12 @@
 
 import { SessionStepper, type Sample } from "../kalman/stepper";
 import type { FusedResult } from "./types";
+import {
+  classify,
+  loadClassifier,
+  type ImuSample,
+  type MotionMode,
+} from "../motion/classifier";
 
 export type LiveStreamStatus =
   | { kind: "idle" }
@@ -24,6 +30,8 @@ export type LiveStreamStatus =
 interface Options {
   onFusedResult: (r: FusedResult) => void;
   onStatus?: (s: LiveStreamStatus) => void;
+  /** Called whenever the classifier updates the detected motion mode. */
+  onMotionMode?: (mode: MotionMode, probs: Record<MotionMode, number>) => void;
 }
 
 interface Handle {
@@ -33,8 +41,16 @@ interface Handle {
 export async function startLiveSensorStream({
   onFusedResult,
   onStatus,
+  onMotionMode,
 }: Options): Promise<Handle | null> {
   onStatus?.({ kind: "requesting" });
+
+  // Load the ML weights in parallel with the permission dance. If it fails,
+  // motion classification just stays quiet — the filter still runs.
+  const classifierPromise = loadClassifier().catch((e) => {
+    console.warn("[motion-classifier] load failed", e);
+    return null;
+  });
 
   if (!("geolocation" in navigator)) {
     onStatus?.({ kind: "error", message: "Geolocation API not available" });
@@ -65,6 +81,16 @@ export async function startLiveSensorStream({
   let imuSamples = 0;
   let gpsFixes = 0;
   let lastStatusTs = 0;
+
+  // Rolling 2-second window of recent IMU samples for the classifier.
+  // Same window length as training. Runs classification once a second so
+  // we don't churn the CPU.
+  const classifierWindow: ImuSample[] = [];
+  const CLASSIFIER_WINDOW_MS = 2000;
+  const CLASSIFIER_INTERVAL_MS = 1000;
+  let lastClassifyTs = 0;
+  let classifierWeights: Awaited<typeof classifierPromise> = null;
+  classifierPromise.then((w) => { classifierWeights = w; });
 
   // GPS state — updated by watchPosition, consumed on the next IMU tick
   let pendingGps: { lat: number; lon: number; accuracyM: number; consumed: boolean } | null = null;
@@ -125,6 +151,33 @@ export async function startLiveSensorStream({
     const result = stepper.step(sample);
     onFusedResult(result);
     imuSamples++;
+
+    // Feed the classifier: rolling 2s window, evaluate once per second.
+    classifierWindow.push({
+      accelX: sample.accelX,
+      accelY: sample.accelY,
+      accelZ: sample.accelZ,
+      gyroX: sample.gyroX,
+      gyroY: sample.gyroY,
+      gyroZ: sample.gyroZ,
+      timestampMs: sample.timestampMs,
+    });
+    while (
+      classifierWindow.length > 0 &&
+      classifierWindow[0].timestampMs < now - CLASSIFIER_WINDOW_MS
+    ) {
+      classifierWindow.shift();
+    }
+    if (
+      classifierWeights &&
+      onMotionMode &&
+      now - lastClassifyTs > CLASSIFIER_INTERVAL_MS &&
+      classifierWindow.length >= 20
+    ) {
+      lastClassifyTs = now;
+      const cls = classify(classifierWindow, classifierWeights);
+      if (cls) onMotionMode(cls.mode, cls.probs);
+    }
 
     if (now - lastStatusTs > 1000) {
       // Rough IMU rate for the last second — samples/elapsed-ms×1000, capped.

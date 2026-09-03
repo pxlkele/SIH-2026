@@ -3,6 +3,7 @@ import { io, type Socket } from "socket.io-client";
 import type { FusedResult, MatchedPathPoint } from "./types";
 import { startDriveReplay } from "./driveReplay";
 import { startLiveSensorStream, type LiveStreamStatus } from "./liveSensorStream";
+import type { MotionMode } from "../motion/classifier";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL as string | undefined;
 
@@ -15,6 +16,8 @@ interface Options {
   mode?: SourceMode;
   /** Fires when live-sensor status changes. Only used when mode === "live". */
   onLiveStatus?: (s: LiveStreamStatus) => void;
+  /** Fires when the motion-mode classifier updates. Only when mode === "live". */
+  onMotionMode?: (mode: MotionMode, probs: Record<MotionMode, number>) => void;
 }
 
 /**
@@ -30,6 +33,7 @@ export function useFusionStream({
   onMatchedPath,
   mode = "replay",
   onLiveStatus,
+  onMotionMode,
 }: Options = {}) {
   const socketRef = useRef<Socket | null>(null);
   const lastGpsUsedTsRef = useRef<number | null>(null);
@@ -70,6 +74,7 @@ export function useFusionStream({
       void startLiveSensorStream({
         onFusedResult: handle,
         onStatus: (s) => onLiveStatus?.(s),
+        onMotionMode: (m, p) => onMotionMode?.(m, p),
       }).then((handle) => {
         if (cancelled) {
           handle?.stop();
