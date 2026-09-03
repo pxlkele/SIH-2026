@@ -183,13 +183,19 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
       }
 
       if (!markerRef.current) {
+        // Vehicle marker: the brand logo in accent blue, with a soft halo.
         const el = document.createElement("div");
-        el.style.width = "16px";
-        el.style.height = "16px";
+        el.style.width = "28px";
+        el.style.height = "28px";
+        el.style.display = "flex";
+        el.style.alignItems = "center";
+        el.style.justifyContent = "center";
+        el.style.background = "rgba(59,130,246,0.15)";
         el.style.borderRadius = "50%";
-        el.style.background = "#3b82f6";
-        el.style.border = "3px solid #fff";
-        el.style.boxShadow = "0 0 12px rgba(59,130,246,0.7)";
+        el.style.boxShadow = "0 0 16px rgba(59,130,246,0.55)";
+        el.innerHTML =
+          '<img src="/logo.png" alt="" ' +
+          'style="width:22px;height:22px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));" />';
         markerRef.current = new mapboxgl.Marker({ element: el })
           .setLngLat(INITIAL_CENTER)
           .addTo(map);
