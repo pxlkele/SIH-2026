@@ -113,11 +113,11 @@ function RecentDriveCard() {
   // storage (via Aleena's SQLite session endpoints), this becomes dynamic.
   const drive = {
     label: "Most recent drive",
-    date: "Sep 2 · 10:35 AM",
+    date: "Sep 3 · 6:03 PM",
     area: "North Bengaluru",
-    distanceKm: 3.2,
-    durationMin: 7,
-    driftM: 2.3,
+    distanceKm: 12.3,
+    durationMin: 34,
+    driftM: 1.5,
   };
   return (
     <div className="rounded-xl border border-ink-700 bg-ink-800/70 p-4 text-left shadow-panel backdrop-blur">
