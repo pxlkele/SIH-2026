@@ -2,27 +2,24 @@ import type { FusedResult } from "./types";
 
 /**
  * Real-drive replay stream. Loads the actual Kalman pipeline output CSVs
- * from public/data/ (real 3.2 km drive in North Bengaluru, 2026-09-02)
+ * from public/data/ (real 12.3 km drive in North Bengaluru, 2026-09-03)
  * and replays them as `fused_result` events at a demo-friendly rate.
  *
- * Also overlays an artificial GPS-outage window in the middle of the trip
- * — the raw-GPS emissions are suppressed during that window so the demo
- * viewer sees the DR-active pill fire naturally. The corrected-path line
- * keeps drawing (it's what the filter actually produced when GPS *was*
- * available), which is the "keeps tracking" story.
+ * Skips forward to `startAtTripSecs` so playback lands right on the
+ * interesting bit — the largest real GPS gap in the trip is at t=1369s,
+ * so default 1366 gives 3 seconds of clean tracking before the gap fires
+ * (perfect for the pitch vlog).
  *
- * We're not claiming we re-ran the filter with GPS blanked — that's a
- * separate exercise in `model/`. This is the pitch overlay.
+ * No artificial outage overlay any more — the real drive has real GPS
+ * gaps (max 6s in this trip), which is more honest for the pitch.
  */
 
 interface Options {
   onFusedResult: (r: FusedResult) => void;
   /** Playback speed multiplier. 1 = real-time, 5 = 5× faster. */
   speed?: number;
-  /** Fraction of the trip [0..1] where the fake GPS outage starts. */
-  outageStart?: number;
-  /** Duration of the outage in seconds of trip-time. */
-  outageDurS?: number;
+  /** Skip forward to this many seconds into the trip before starting. */
+  startAtTripSecs?: number;
 }
 
 interface CorrectedRow {
@@ -43,11 +40,15 @@ interface RawRow {
   lon: number;
 }
 
+// Where the biggest real GPS gap in web/public/data/drive_raw_gps.csv sits.
+// 6-second dropout at t=1369s. Starting 3s earlier gives the demo viewer
+// enough context to see normal tracking → gap → dead-reckoning kicking in.
+const DEFAULT_START_S = 1366;
+
 export function startDriveReplay({
   onFusedResult,
-  speed = 8,
-  outageStart = 0.45,
-  outageDurS = 30,
+  speed = 1,
+  startAtTripSecs = DEFAULT_START_S,
 }: Options): () => void {
   let cancelled = false;
   let handle: ReturnType<typeof setTimeout> | null = null;
@@ -64,22 +65,23 @@ export function startDriveReplay({
     if (corrected.length === 0) return;
 
     const tripStartMs = corrected[0].timestamp_ms;
-    const tripEndMs = corrected[corrected.length - 1].timestamp_ms;
-    const outageBegin = tripStartMs + (tripEndMs - tripStartMs) * outageStart;
-    const outageEnd = outageBegin + outageDurS * 1000;
-
-    // Build a Set of "GPS-used" timestamps: any corrected sample within ±100ms
-    // of a raw GPS fix counts as gps_used (except during the fake outage).
+    const skipMs = startAtTripSecs * 1000;
     const rawTimestamps = raw.map((r) => r.timestamp_ms).sort((a, b) => a - b);
 
-    // Pre-compute walltime schedule: each event fires at (t_trip - tripStart) / speed
+    // Find the first corrected sample at or after our skip point
+    let idx = 0;
+    while (idx < corrected.length && corrected[idx].timestamp_ms - tripStartMs < skipMs) {
+      idx++;
+    }
+    if (idx >= corrected.length) return;
+
+    const playbackTripAnchorMs = corrected[idx].timestamp_ms;
     const walltimeStart = performance.now();
 
-    let idx = 0;
     const emit = () => {
       if (cancelled || idx >= corrected.length) return;
       const c = corrected[idx];
-      const tripElapsedMs = c.timestamp_ms - tripStartMs;
+      const tripElapsedMs = c.timestamp_ms - playbackTripAnchorMs;
       const walltimeElapsedMs = performance.now() - walltimeStart;
       const targetWalltimeMs = tripElapsedMs / speed;
 
@@ -88,8 +90,7 @@ export function startDriveReplay({
         return;
       }
 
-      const inOutage = c.timestamp_ms >= outageBegin && c.timestamp_ms < outageEnd;
-      const nearFix = !inOutage && hasNearbyRawFix(c.timestamp_ms, rawTimestamps, 100);
+      const nearFix = hasNearbyRawFix(c.timestamp_ms, rawTimestamps, 100);
 
       onFusedResult({
         state: "running",
@@ -97,8 +98,8 @@ export function startDriveReplay({
         lat: c.lat,
         lon: c.lon,
         heading_rad: c.heading_rad,
-        std_e_m: inOutage ? c.std_e_m + (c.timestamp_ms - outageBegin) / 1000 * 1.5 : c.std_e_m,
-        std_n_m: inOutage ? c.std_n_m + (c.timestamp_ms - outageBegin) / 1000 * 1.2 : c.std_n_m,
+        std_e_m: c.std_e_m,
+        std_n_m: c.std_n_m,
         cov_ee: c.cov_ee,
         cov_en: c.cov_en,
         cov_nn: c.cov_nn,
