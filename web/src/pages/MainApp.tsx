@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Car, ChevronLeft, Crosshair, Footprints, Pause, Search } from "lucide-react";
+import { ChevronLeft, Crosshair, Search } from "lucide-react";
 import MapView, { type MapViewHandle } from "../map/MapView";
 import { MapStyleToggle } from "../map/MapStyleToggle";
 import { useFusionStream } from "../data/useFusionStream";
 import { useRawGeolocation } from "../data/useRawGeolocation";
+import { SessionRecorder } from "../data/sessionStore";
 import type { MotionMode } from "../motion/classifier";
 import { useNavigation } from "../nav/useNavigation";
 import { NavSearch } from "../nav/NavSearch";
@@ -26,7 +27,14 @@ export default function MainApp() {
   const [showSearch, setShowSearch] = useState(false);
   const [userMovedMap, setUserMovedMap] = useState(false);
   const [motionMode, setMotionMode] = useState<MotionMode | null>(null);
-  const [motionConfidence, setMotionConfidence] = useState<number>(0);
+
+  // Session recorder — starts when the user begins a navigation, stops
+  // when they arrive/cancel. Logs 1 Hz samples locally to IndexedDB.
+  const recorderRef = useRef<SessionRecorder | null>(null);
+  const motionModeRef = useRef<MotionMode | null>(null);
+  useEffect(() => {
+    motionModeRef.current = motionMode;
+  }, [motionMode]);
 
   // Definitive current position — always driven by raw geolocation so it
   // works on desktop too.
@@ -35,12 +43,23 @@ export default function MainApp() {
   // Fused stream draws the corrected path + ellipse (mobile only in practice)
   const { latestFused } = useFusionStream({
     mode: "live",
-    onFusedResult: (r) => mapRef.current?.pushFusedPoint(r),
-    onMotionMode: (m, probs) => {
-      setMotionMode(m);
-      setMotionConfidence(probs[m]);
+    onFusedResult: (r) => {
+      mapRef.current?.pushFusedPoint(r);
+      // Log to the active session recorder if one exists
+      if (r.lat != null && r.lon != null) {
+        recorderRef.current?.sample(r.lat, r.lon, motionModeRef.current ?? undefined);
+      }
     },
+    onMotionMode: (m) => setMotionMode(m),
   });
+
+  // If fused isn't producing (desktop, no motion sensors), also log raw fixes
+  useEffect(() => {
+    if (rawFix && recorderRef.current && (!latestFused?.lat || !latestFused?.lon)) {
+      recorderRef.current.sample(rawFix.lat, rawFix.lon, motionModeRef.current ?? undefined);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawFix]);
 
   // Recenter-button subscription
   useEffect(() => {
@@ -91,6 +110,56 @@ export default function MainApp() {
     );
   }, [nav.destination]);
 
+  // Session lifecycle: start recorder when a destination is set, end when
+  // it's cleared. Persists automatically to IndexedDB.
+  useEffect(() => {
+    if (nav.destination && !recorderRef.current) {
+      recorderRef.current = new SessionRecorder({
+        name: nav.destination.name,
+        lat: nav.destination.lat,
+        lon: nav.destination.lon,
+      });
+      console.log("[session] started", recorderRef.current.id);
+    } else if (!nav.destination && recorderRef.current) {
+      const rec = recorderRef.current;
+      recorderRef.current = null;
+      void rec.end().then((s) => console.log("[session] ended", s.id, `${s.samples.length} samples`));
+    }
+  }, [nav.destination]);
+
+  // Also end the session cleanly on unmount (user navigates away)
+  useEffect(() => {
+    return () => {
+      if (recorderRef.current) {
+        void recorderRef.current.end();
+        recorderRef.current = null;
+      }
+    };
+  }, []);
+
+  // Recenter handler — Google-Maps behavior. Force a fresh geolocation
+  // request (re-prompts permission if user dismissed it earlier), then pan
+  // + zoom to that fix. Falls back to whatever cached position we have.
+  const handleRecenter = () => {
+    // Immediately snap to any cached position for instant feedback
+    if (rawFix) mapRef.current?.panTo(rawFix.lat, rawFix.lon);
+    mapRef.current?.recenter();
+    // Also request a fresh fix — this triggers the permission prompt if
+    // needed, and gives a more accurate/current position than watchPosition
+    // may have last cached.
+    if (!("geolocation" in navigator)) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        mapRef.current?.panTo(pos.coords.latitude, pos.coords.longitude);
+        mapRef.current?.recenter();
+      },
+      (err) => {
+        console.warn("[recenter] fresh fix failed", err.code, err.message);
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 },
+    );
+  };
+
   const uncertainty =
     latestFused && latestFused.std_e_m != null && latestFused.std_n_m != null
       ? Math.hypot(latestFused.std_e_m, latestFused.std_n_m)
@@ -99,6 +168,14 @@ export default function MainApp() {
   const headingRad =
     latestFused?.heading_rad ??
     (rawFix?.headingDeg != null ? (rawFix.headingDeg * Math.PI) / 180 : null);
+
+  // Speed: prefer geolocation's own speed (device sensor), fall back to
+  // Kalman velocity magnitude if the browser doesn't report it.
+  const speedKmh = (() => {
+    if (rawFix?.speedMps != null && rawFix.speedMps >= 0) return rawFix.speedMps * 3.6;
+    // If we ever expose vE/vN on the fused result we could fall back here.
+    return null;
+  })();
 
   return (
     <div className="relative h-[100dvh] w-screen overflow-hidden bg-ink-950 text-ink-100">
@@ -121,33 +198,23 @@ export default function MainApp() {
         </div>
       </header>
 
-      {/* Motion-mode pill — small badge below the top nav showing what the
-          on-device classifier thinks the vehicle is doing right now. */}
-      {motionMode && (
-        <div className="pointer-events-none absolute inset-x-0 top-16 z-10 flex justify-center px-3">
-          <MotionModePill mode={motionMode} confidence={motionConfidence} />
-        </div>
-      )}
-
       {/* Only surfaces permission-denied errors. Transient GPS timeouts
           stay quiet. If you're not sharing location you can still route
           from wherever the map is pointing. */}
       {geoError && (
-        <div className="pointer-events-none absolute inset-x-0 top-28 z-10 flex justify-center px-3">
+        <div className="pointer-events-none absolute inset-x-0 top-16 z-10 flex justify-center px-3">
           <div className="pointer-events-auto rounded-md border border-status-alert/60 bg-status-alert/10 px-3 py-2 text-xs text-status-alert">
             {geoError}
           </div>
         </div>
       )}
 
-      {/* Recenter button — always visible. Shows a stronger accent when the
-          user has manually panned away so it reads as "your action is
-          waiting" rather than a passive control. */}
+      {/* Recenter button — Google-Maps style. On tap: force a fresh
+          getCurrentPosition (re-prompts permission if needed), then pan +
+          zoom in + tilt. Works even if the passive watchPosition hadn't
+          fired yet or if the user had denied earlier. */}
       <button
-        onClick={() => {
-          if (rawFix) mapRef.current?.panTo(rawFix.lat, rawFix.lon);
-          mapRef.current?.recenter();
-        }}
+        onClick={handleRecenter}
         className={
           "pointer-events-auto absolute bottom-40 right-4 z-20 flex h-11 w-11 items-center justify-center rounded-full border shadow-raised backdrop-blur transition sm:bottom-44 " +
           (userMovedMap
@@ -206,27 +273,28 @@ export default function MainApp() {
           </Button>
         )}
 
-        <Panel className="pointer-events-auto w-full max-w-sm sm:w-auto">
-          <div className="flex items-center gap-5 px-4 py-2 font-mono">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-[10px] uppercase tracking-wider text-ink-500">
-                Accuracy
-              </span>
-              <span className="tabular-nums text-sm font-semibold text-ink-100">
-                ±{uncertainty != null ? uncertainty.toFixed(1) : "—"} m
-              </span>
-            </div>
-            <div className="h-3 w-px bg-ink-700" />
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-[10px] uppercase tracking-wider text-ink-500">
-                Heading
-              </span>
-              <span className="tabular-nums text-sm font-semibold text-ink-100">
-                {headingRad != null
+        <Panel className="pointer-events-auto w-full max-w-md sm:w-auto">
+          <div className="flex items-center gap-4 px-4 py-2 font-mono sm:gap-5">
+            <StatCell label="Accuracy" value={uncertainty != null ? `±${uncertainty.toFixed(1)} m` : "—"} />
+            <Divider />
+            <StatCell
+              label="Heading"
+              value={
+                headingRad != null
                   ? `${normalizeHeadingDeg(headingRad).toFixed(0).padStart(3, "0")}°`
-                  : "—"}
-              </span>
-            </div>
+                  : "—"
+              }
+            />
+            <Divider />
+            <StatCell
+              label="Mode"
+              value={motionMode ? modeLabel(motionMode) : "—"}
+            />
+            <Divider />
+            <StatCell
+              label="Speed"
+              value={speedKmh != null ? `${speedKmh.toFixed(0)} km/h` : "—"}
+            />
           </div>
         </Panel>
 
@@ -247,24 +315,19 @@ function normalizeHeadingDeg(rad: number): number {
   return deg;
 }
 
-function MotionModePill({
-  mode,
-  confidence,
-}: {
-  mode: MotionMode;
-  confidence: number;
-}) {
-  const cfg: Record<MotionMode, { icon: React.ReactNode; label: string }> = {
-    driving:    { icon: <Car size={12} />,         label: "Driving" },
-    walking:    { icon: <Footprints size={12} />,  label: "Walking" },
-    stationary: { icon: <Pause size={12} />,       label: "Stationary" },
-  };
-  const c = cfg[mode];
+function modeLabel(m: MotionMode): string {
+  return { driving: "Driving", walking: "Walking", stationary: "Idle" }[m];
+}
+
+function StatCell({ label, value }: { label: string; value: string }) {
   return (
-    <div className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-accent-line bg-ink-900/85 px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider text-accent-bright backdrop-blur">
-      {c.icon}
-      <span>{c.label}</span>
-      <span className="tabular-nums text-ink-500">{Math.round(confidence * 100)}%</span>
+    <div className="flex items-baseline gap-1.5">
+      <span className="text-[10px] uppercase tracking-wider text-ink-500">{label}</span>
+      <span className="tabular-nums text-sm font-semibold text-ink-100">{value}</span>
     </div>
   );
+}
+
+function Divider() {
+  return <div className="h-3 w-px shrink-0 bg-ink-700" />;
 }

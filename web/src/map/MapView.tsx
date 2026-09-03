@@ -388,18 +388,19 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
     },
     recenter() {
       // Drop the "user is driving the camera" flag AND immediately snap the
-      // camera to the last known vehicle position. If we didn't snap now,
-      // the camera would only move on the next fused sample — which on
-      // desktop (no motion sensors) never arrives.
+      // camera to the last known vehicle position — Google-Maps recenter:
+      // pan + zoom in + tilt to navigation view.
       setUserInteracting(false);
       const last = lastPosRef.current;
       if (!last || !mapRef.current) return;
       suppressUserInteractionRef.current++;
+      const currentZoom = mapRef.current.getZoom();
       mapRef.current.easeTo({
         center: [last.lon, last.lat],
         bearing: (last.headingRad * 180) / Math.PI,
         pitch: 55,
-        duration: 500,
+        zoom: Math.max(currentZoom, 17),      // zoom in if we were far out
+        duration: 600,
         essential: true,
       });
     },

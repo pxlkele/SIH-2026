@@ -86,6 +86,37 @@ export async function getRoute(
   };
 }
 
+/**
+ * Load a precomputed route for one of the preset destinations. Used as a
+ * fallback when the live Directions API is unreachable (airplane mode,
+ * flaky connectivity). Origin is fixed to a canonical Bengaluru point —
+ * the demo lives in that area anyway.
+ */
+export async function loadPresetRoute(destSlug: string): Promise<Route | null> {
+  try {
+    const resp = await fetch("/preset_routes.json");
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const r = data.routes?.[destSlug];
+    if (!r) return null;
+    return {
+      geometry: r.geometry as [number, number][],
+      steps: (r.steps ?? []).map((s: any) => ({
+        instruction: s.instruction ?? "Continue",
+        distanceM: s.distance ?? 0,
+        durationS: s.duration ?? 0,
+        maneuverType: s.maneuverType ?? "continue",
+        location: s.location,
+      })),
+      totalDistanceM: r.distance ?? 0,
+      totalDurationS: r.duration ?? 0,
+    };
+  } catch (e) {
+    console.warn("[preset-route] fallback load failed", e);
+    return null;
+  }
+}
+
 /** Distance in metres between two lat/lon pairs (haversine). */
 export function distanceM(latA: number, lonA: number, latB: number, lonB: number): number {
   const R = 6_378_137;

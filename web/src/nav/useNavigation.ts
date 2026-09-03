@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { distanceM, getRoute, type Route, type RouteStep } from "./mapboxApi";
+import { distanceM, getRoute, loadPresetRoute, type Route, type RouteStep } from "./mapboxApi";
 
 interface Options {
   /** Current vehicle position, updated every fused_result. */
@@ -12,6 +12,10 @@ interface Destination {
   name: string;
   lat: number;
   lon: number;
+  /** Preset slug if this destination is one of the built-in shortcuts.
+   *  Enables offline fallback via precomputed routes when the live
+   *  Directions API is unreachable. */
+  presetSlug?: string;
 }
 
 /**
@@ -43,7 +47,22 @@ export function useNavigation({ currentPos, advanceRadiusM = 40 }: Options) {
         setCurrentStepIdx(0);
         routeStartPosRef.current = { ...origin };
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to plan route");
+        // Live routing failed (offline, network glitch). If this is a
+        // preset destination, we may have a precomputed route bundled in
+        // the app — use it so the demo still works airplane-mode.
+        if (dest.presetSlug) {
+          const fallback = await loadPresetRoute(dest.presetSlug);
+          if (fallback) {
+            setRoute(fallback);
+            setDestination(dest);
+            setCurrentStepIdx(0);
+            routeStartPosRef.current = { ...origin };
+            setError("Using offline route (precomputed for demo area)");
+            setLoading(false);
+            return;
+          }
+        }
+        setError(e instanceof Error ? `Route failed: ${e.message}` : "Failed to plan route");
         setRoute(null);
         setDestination(null);
       } finally {

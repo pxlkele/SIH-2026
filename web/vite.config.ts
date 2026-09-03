@@ -36,7 +36,7 @@ export default defineConfig({
       workbox: {
         // Cache large map tiles + drive replay CSVs so the app boots offline.
         // Mapbox tiles are runtime-cached (network-first, fall back to cache).
-        globPatterns: ["**/*.{js,css,html,svg,png,ico,csv,woff2}"],
+        globPatterns: ["**/*.{js,css,html,svg,png,ico,csv,woff2,json}"],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,   // 5 MB per file cap
         runtimeCaching: [
           {

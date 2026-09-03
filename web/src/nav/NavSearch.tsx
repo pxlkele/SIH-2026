@@ -4,18 +4,19 @@ import { geocode, type GeocodeMatch } from "./mapboxApi";
 
 interface Props {
   near?: { lat: number; lon: number } | null;
-  onSelect: (dest: { name: string; lat: number; lon: number }) => void;
+  onSelect: (dest: { name: string; lat: number; lon: number; presetSlug?: string }) => void;
   onClose?: () => void;
 }
 
-// Preset destinations near the demo drive area (North Bengaluru).
-// One-tap shortcuts so the demo doesn't require typing.
-const PRESETS: { label: string; lat: number; lon: number; name: string }[] = [
-  { label: "Phoenix Mall of Asia", name: "Phoenix Mall of Asia, Bengaluru", lat: 13.0996, lon: 77.5928 },
-  { label: "MG Road", name: "MG Road, Bengaluru",       lat: 12.9760, lon: 77.6060 },
-  { label: "Hebbal", name: "Hebbal, Bengaluru",         lat: 13.0355, lon: 77.5970 },
-  { label: "Cubbon Park", name: "Cubbon Park, Bengaluru", lat: 12.9764, lon: 77.5929 },
-  { label: "Jayanagar", name: "Jayanagar, Bengaluru",   lat: 12.9250, lon: 77.5936 },
+// Preset destinations near the demo drive area (North Bengaluru). Slugs
+// match `public/preset_routes.json` so we can serve a precomputed route
+// if the live Directions API is unreachable.
+const PRESETS: { slug: string; label: string; lat: number; lon: number; name: string }[] = [
+  { slug: "phoenix_mall_of_asia", label: "Phoenix Mall of Asia", name: "Phoenix Mall of Asia, Bengaluru", lat: 13.0996, lon: 77.5928 },
+  { slug: "mg_road",              label: "MG Road",              name: "MG Road, Bengaluru",              lat: 12.9760, lon: 77.6060 },
+  { slug: "hebbal",               label: "Hebbal",               name: "Hebbal, Bengaluru",               lat: 13.0355, lon: 77.5970 },
+  { slug: "cubbon_park",          label: "Cubbon Park",          name: "Cubbon Park, Bengaluru",          lat: 12.9764, lon: 77.5929 },
+  { slug: "jayanagar",            label: "Jayanagar",            name: "Jayanagar, Bengaluru",            lat: 12.9250, lon: 77.5936 },
 ];
 
 /**
@@ -113,8 +114,10 @@ export function NavSearch({ near, onSelect, onClose }: Props) {
           <div className="flex flex-wrap gap-1.5">
             {PRESETS.map((p) => (
               <button
-                key={p.label}
-                onClick={() => onSelect({ name: p.name, lat: p.lat, lon: p.lon })}
+                key={p.slug}
+                onClick={() =>
+                  onSelect({ name: p.name, lat: p.lat, lon: p.lon, presetSlug: p.slug })
+                }
                 className="rounded-full border border-ink-700 bg-ink-800/60 px-2.5 py-1 text-xs text-ink-200 transition hover:border-accent-line hover:bg-accent-soft hover:text-accent-bright"
               >
                 {p.label}
