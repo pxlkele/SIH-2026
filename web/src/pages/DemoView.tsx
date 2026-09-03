@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { AlertTriangle, ChevronLeft, Radio } from "lucide-react";
 import MapView, { type MapViewHandle } from "../map/MapView";
+import { MapStyleToggle } from "../map/MapStyleToggle";
 import { useFusionStream } from "../data/useFusionStream";
 import { Wordmark } from "../components/Logo";
 import { LinkButton, Panel, Pill } from "../components/ui";
@@ -30,7 +31,12 @@ export default function DemoView() {
 
   return (
     <div className="relative flex h-[100dvh] w-screen flex-col overflow-hidden bg-ink-950 text-ink-100">
-      <DemoHeader />
+      <DemoHeader
+        onStyleChange={(s) => {
+          rawMapRef.current?.setStyle(s);
+          fusedMapRef.current?.setStyle(s);
+        }}
+      />
 
       <div className="relative min-h-0 flex-1">
         <div className="grid h-full w-full grid-cols-1 grid-rows-2 md:grid-cols-2 md:grid-rows-1">
@@ -77,21 +83,28 @@ export default function DemoView() {
   );
 }
 
-function DemoHeader() {
+function DemoHeader({
+  onStyleChange,
+}: {
+  onStyleChange: (s: import("../map/MapView").MapStyle) => void;
+}) {
   return (
     <header className="z-30 flex h-12 items-center justify-between border-b border-ink-800/80 bg-ink-950/85 px-3 backdrop-blur sm:h-14 sm:px-5">
       <div className="flex items-center gap-3">
-        <LinkButton to="/" variant="ghost" size="sm">
-          <ChevronLeft size={14} /> <span className="hidden sm:inline">Home</span>
+        <LinkButton to="/app" variant="ghost" size="sm">
+          <ChevronLeft size={14} /> <span className="hidden sm:inline">App</span>
         </LinkButton>
         <div className="hidden h-4 w-px bg-ink-700 sm:block" />
         <div className="hidden sm:block">
           <Wordmark subtitle="Split view" />
         </div>
       </div>
-      <Pill tone="accent" dot>
-        <Radio size={11} /> Live
-      </Pill>
+      <div className="flex items-center gap-2">
+        <MapStyleToggle onChange={onStyleChange} />
+        <Pill tone="accent" dot>
+          <Radio size={11} /> Live
+        </Pill>
+      </div>
     </header>
   );
 }

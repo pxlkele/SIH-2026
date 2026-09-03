@@ -15,11 +15,22 @@ export interface MapViewHandle {
   setSmoothedPath(points: { lat: number; lon: number }[]): void;
   setRoute(geometry: [number, number][] | null): void;
   setDestinationMarker(coord: [number, number] | null): void;
+  setStyle(style: MapStyle): void;
   clear(): void;
 }
 
+export type MapStyle = "dark" | "streets" | "satellite";
+
+const STYLE_URL: Record<MapStyle, string> = {
+  dark:      "mapbox://styles/mapbox/dark-v11",
+  streets:   "mapbox://styles/mapbox/streets-v12",
+  satellite: "mapbox://styles/mapbox/satellite-streets-v12",
+};
+
 interface Props {
   showLayers: LayerId[];
+  /** Initial style — defaults to "dark". */
+  initialStyle?: MapStyle;
   /** Optional: keep another MapView's camera in sync with this one. */
   syncWith?: RefObject<MapViewHandle | null>;
 }
@@ -37,7 +48,7 @@ const PATH_STYLE: Record<LayerId, { color: string; width: number }> = {
 };
 
 const MapView = forwardRef<MapViewHandle, Props>(function MapView(
-  { showLayers, syncWith },
+  { showLayers, syncWith, initialStyle = "dark" },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -71,13 +82,14 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
 
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: "mapbox://styles/mapbox/dark-v11",
+      style: STYLE_URL[initialStyle],
       center: INITIAL_CENTER,
       zoom: INITIAL_ZOOM,
     });
     mapRef.current = map;
 
-    map.on("load", () => {
+    // Called after every base-style change to reinstate our custom layers.
+    const setupLayers = () => {
       // Route layer (nav): drawn *underneath* corrected so the fused line
       // sits on top and reads as "where we actually are" vs "where we planned".
       if (showLayers.includes("route")) {
@@ -170,14 +182,40 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
         });
       }
 
-      const el = document.createElement("div");
-      el.style.width = "16px";
-      el.style.height = "16px";
-      el.style.borderRadius = "50%";
-      el.style.background = "#3b82f6";
-      el.style.border = "3px solid #fff";
-      el.style.boxShadow = "0 0 12px rgba(59,130,246,0.7)";
-      markerRef.current = new mapboxgl.Marker({ element: el }).setLngLat(INITIAL_CENTER).addTo(map);
+      if (!markerRef.current) {
+        const el = document.createElement("div");
+        el.style.width = "16px";
+        el.style.height = "16px";
+        el.style.borderRadius = "50%";
+        el.style.background = "#3b82f6";
+        el.style.border = "3px solid #fff";
+        el.style.boxShadow = "0 0 12px rgba(59,130,246,0.7)";
+        markerRef.current = new mapboxgl.Marker({ element: el })
+          .setLngLat(INITIAL_CENTER)
+          .addTo(map);
+      }
+
+      // Repaint any accumulated data (e.g. after a style change)
+      if (correctedRef.current.length > 0) {
+        const src = map.getSource("corrected") as mapboxgl.GeoJSONSource | undefined;
+        src?.setData({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: correctedRef.current } });
+      }
+      if (rawRef.current.length > 0) {
+        const src = map.getSource("raw") as mapboxgl.GeoJSONSource | undefined;
+        src?.setData({
+          type: "FeatureCollection",
+          features: rawRef.current.map(([lo, la]) => ({
+            type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [lo, la] },
+          })),
+        });
+      }
+    };
+
+    map.on("load", setupLayers);
+    // After every setStyle(), Mapbox wipes custom sources+layers.
+    // style.load fires when the new style finishes loading — reinstate.
+    map.on("style.load", () => {
+      if (map.isStyleLoaded()) setupLayers();
     });
 
     return () => {
@@ -261,6 +299,10 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
         properties: {},
         geometry: { type: "LineString", coordinates: geometry ?? [] },
       });
+    },
+    setStyle(style) {
+      if (!mapRef.current) return;
+      mapRef.current.setStyle(STYLE_URL[style]);
     },
     setDestinationMarker(coord) {
       if (!mapRef.current) return;

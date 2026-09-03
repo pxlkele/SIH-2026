@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, Navigation, Search } from "lucide-react";
 import MapView, { type MapViewHandle } from "../map/MapView";
+import { MapStyleToggle } from "../map/MapStyleToggle";
 import { useFusionStream } from "../data/useFusionStream";
 import { useNavigation } from "../nav/useNavigation";
 import { NavSearch } from "../nav/NavSearch";
@@ -81,16 +82,19 @@ export default function MainApp() {
         <div className="pointer-events-auto hidden rounded-md border border-ink-700 bg-ink-900/80 px-3 py-1.5 backdrop-blur sm:block">
           <Wordmark />
         </div>
-        {isDRActive ? (
-          <Pill tone="warn" dot className="pointer-events-auto">
-            <Navigation size={11} />
-            Dead reckoning
-          </Pill>
-        ) : (
-          <Pill tone="ok" dot className="pointer-events-auto">
-            GPS lock
-          </Pill>
-        )}
+        <div className="pointer-events-auto flex items-center gap-2">
+          <MapStyleToggle onChange={(s) => mapRef.current?.setStyle(s)} />
+          {isDRActive ? (
+            <Pill tone="warn" dot>
+              <Navigation size={11} />
+              Dead reckoning
+            </Pill>
+          ) : (
+            <Pill tone="ok" dot>
+              GPS lock
+            </Pill>
+          )}
+        </div>
       </header>
 
       {/* Search overlay */}
