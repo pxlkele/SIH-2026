@@ -1,6 +1,8 @@
 # Intelligent Dead Reckoning (IDR) with GNSS Fusion
 ## Smart India Hackathon — Problem Statement SIH26168
 
+> Sensor data schema is locked (data_schema.md).
+
 **The Problem**
 
 A delivery rider on a scooter drops into the basement parking of a mall to hand off a quick-commerce order. Their phone's GPS blue dot freezes, then jumps 200 meters across the map. They miss the exit ramp, waste four minutes, and the order is late.This happens millions of times a day across Indian cities — in metro underground parking, road and rail tunnels, and the dense urban canyons of high-rise clusters. GNSS signals are inherently weak and easily blocked by structures, foliage, and interference. Most Indian vehicles — commercial trucks, older cars, and the crores of two-wheelers on the road — have no factory-fitted Inertial Navigation System (INS) to fall back on. They rely entirely on a smartphone in a dashboard mount, and consumer-grade smartphone sensors alone drift wildly within seconds of losing GPS.
