@@ -28,19 +28,20 @@ export function useNavigation({ currentPos, advanceRadiusM = 40 }: Options) {
   const routeStartPosRef = useRef<{ lat: number; lon: number } | null>(null);
 
   const startNavigation = useCallback(
-    async (dest: Destination) => {
-      if (!currentPos) {
-        setError("Waiting for GPS fix...");
+    async (dest: Destination, originOverride?: { lat: number; lon: number } | null) => {
+      const origin = originOverride ?? currentPos;
+      if (!origin) {
+        setError("Location unavailable — enable GPS or pan the map to your area.");
         return;
       }
       setLoading(true);
       setError(null);
       try {
-        const r = await getRoute([currentPos.lon, currentPos.lat], [dest.lon, dest.lat]);
+        const r = await getRoute([origin.lon, origin.lat], [dest.lon, dest.lat]);
         setRoute(r);
         setDestination(dest);
         setCurrentStepIdx(0);
-        routeStartPosRef.current = { ...currentPos };
+        routeStartPosRef.current = { ...origin };
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to plan route");
         setRoute(null);

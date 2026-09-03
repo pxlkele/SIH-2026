@@ -96,7 +96,7 @@ Stack: **Vite + React + Tailwind + Mapbox GL JS + Socket.io client**, deployed t
 - [x] Live drift HUD (uncertainty / GPS-lost timer / Δ from raw), threshold-coloured
 - [x] Mobile-responsive (stacks vertically on narrow screens)
 - [ ] Consume Aleena's `matched_path` event → third layer on the fused side
-- [ ] Post-run RTS smoothed layer (needs Aleena's `/session/:id/smoothed` endpoint)
+- [ ] Post-run RTS smoothed layer (needs Aleena's `/sessions/:id/smoothed` endpoint)
 
 ### Charvi's lane (separate)
 - Marketing / landing site (`/`) — hers to design + ship
@@ -110,5 +110,5 @@ Stack: **Vite + React + Tailwind + Mapbox GL JS + Socket.io client**, deployed t
   - Dead-reckoning ON/OFF toggle (Charvi, pure client-side)
   - Live drift counter HUD (Charvi, using `fused_result` + raw GPS)
 - [x] Extend `StepResult` with full 2×2 position covariance (`cov_ee`, `cov_en`, `cov_nn`) — unlocks Charvi's rotated ellipse. Wire-format documented in `model/README.md :: Inference API` with a JS eigendecomposition snippet. **Aleena's `modelBridge.js` needs no code change** — it forwards the whole `StepResult` object as-is to `fused_result`, so the new fields flow through automatically.
-- [x] **Post-run RTS backwards smoother** (`model/smoother.py`) — a bonus depth feature: same Kalman math run forward then backward, blended optimally. **5× improvement through the synth outage (1.39 m vs 6.35 m mean)**. Spec for the split-screen + playback layer added to Charvi's todo. Backend needs a small `/session/:id/smoothed` endpoint from Aleena (spec added to her todo).
+- [x] **Post-run RTS backwards smoother** (`model/smoother.py`) — a bonus depth feature: same Kalman math run forward then backward, blended optimally. **5× improvement through the synth outage (1.39 m vs 6.35 m mean)**. Spec for the split-screen + playback layer added to Charvi's todo. Backend needs a small `/sessions/:id/smoothed` endpoint from Aleena (spec added to her todo).
 - [ ] Rehearse the pitch flow with the new visuals in place before the buffer days — the demo script may want minor updates to lean on the toggle / ellipse / smoothed-playback moments

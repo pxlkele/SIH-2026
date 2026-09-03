@@ -15,6 +15,9 @@ export interface MapViewHandle {
    *  Used when raw geolocation gives us a fix independently of the fused
    *  stream — no heading, so we can't align the map bearing. */
   panTo(lat: number, lon: number): void;
+  /** Return the current map center — used as a fallback origin for routing
+   *  when neither raw nor fused GPS has produced a fix yet. */
+  getCenter(): { lat: number; lon: number } | null;
   setMatchedPath(points: { lat: number; lon: number }[]): void;
   setSmoothedPath(points: { lat: number; lon: number }[]): void;
   setRoute(geometry: [number, number][] | null): void;
@@ -378,6 +381,11 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
       if (!mapRef.current) return;
       mapRef.current.setStyle(STYLE_URL[style]);
     },
+    getCenter() {
+      if (!mapRef.current) return null;
+      const c = mapRef.current.getCenter();
+      return { lat: c.lat, lon: c.lng };
+    },
     recenter() {
       // Drop the "user is driving the camera" flag AND immediately snap the
       // camera to the last known vehicle position. If we didn't snap now,
@@ -440,7 +448,10 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
     },
   }));
 
-  return <div ref={containerRef} className="h-full w-full" />;
+  // `touch-action: none` is critical — without it, mobile browsers intercept
+  // multi-finger gestures for their own pinch-to-zoom / scroll, and Mapbox
+  // never sees the touchmove events needed for rotate + pitch.
+  return <div ref={containerRef} className="h-full w-full touch-none" />;
 });
 
 export default MapView;

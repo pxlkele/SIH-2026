@@ -125,16 +125,24 @@ export default function MainApp() {
         </div>
       )}
 
-      {/* Recenter button — snaps immediately using the last known position. */}
-      {userMovedMap && (
-        <button
-          onClick={() => mapRef.current?.recenter()}
-          className="pointer-events-auto absolute bottom-40 right-4 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-ink-700 bg-ink-900/85 text-accent-bright shadow-raised backdrop-blur transition hover:bg-ink-800 sm:bottom-44"
-          aria-label="Recenter on vehicle"
-        >
-          <Crosshair size={18} />
-        </button>
-      )}
+      {/* Recenter button — always visible. Shows a stronger accent when the
+          user has manually panned away so it reads as "your action is
+          waiting" rather than a passive control. */}
+      <button
+        onClick={() => {
+          if (rawFix) mapRef.current?.panTo(rawFix.lat, rawFix.lon);
+          mapRef.current?.recenter();
+        }}
+        className={
+          "pointer-events-auto absolute bottom-40 right-4 z-20 flex h-11 w-11 items-center justify-center rounded-full border shadow-raised backdrop-blur transition sm:bottom-44 " +
+          (userMovedMap
+            ? "border-accent-line bg-accent text-white hover:bg-accent-bright"
+            : "border-ink-700 bg-ink-900/85 text-accent-bright hover:bg-ink-800")
+        }
+        aria-label="Center on my location"
+      >
+        <Crosshair size={18} />
+      </button>
 
       {/* Search overlay */}
       {showSearch && (
@@ -145,7 +153,11 @@ export default function MainApp() {
               onClose={() => setShowSearch(false)}
               onSelect={(dest) => {
                 setShowSearch(false);
-                nav.startNavigation(dest);
+                // If we don't have a GPS fix yet, route from wherever the
+                // user is currently looking on the map. Beats silently
+                // dropping the tap.
+                const origin = currentPos ?? mapRef.current?.getCenter() ?? null;
+                nav.startNavigation(dest, origin);
               }}
             />
           </div>
