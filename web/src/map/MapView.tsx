@@ -183,19 +183,17 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
       }
 
       if (!markerRef.current) {
-        // Vehicle marker: the brand logo in accent blue, with a soft halo.
+        // Vehicle marker: Google-Maps-style blue dot — solid centre, white
+        // ring, translucent halo. Reads instantly as "you are here" without
+        // competing visually with the fused path lines.
         const el = document.createElement("div");
-        el.style.width = "28px";
-        el.style.height = "28px";
-        el.style.display = "flex";
-        el.style.alignItems = "center";
-        el.style.justifyContent = "center";
-        el.style.background = "rgba(59,130,246,0.15)";
+        el.style.width = "18px";
+        el.style.height = "18px";
         el.style.borderRadius = "50%";
-        el.style.boxShadow = "0 0 16px rgba(59,130,246,0.55)";
-        el.innerHTML =
-          '<img src="/logo.png" alt="" ' +
-          'style="width:22px;height:22px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));" />';
+        el.style.background = "#3b82f6";
+        el.style.border = "3px solid #ffffff";
+        el.style.boxShadow =
+          "0 0 0 6px rgba(59,130,246,0.22), 0 2px 8px rgba(0,0,0,0.45)";
         markerRef.current = new mapboxgl.Marker({ element: el })
           .setLngLat(INITIAL_CENTER)
           .addTo(map);
