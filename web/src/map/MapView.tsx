@@ -11,12 +11,17 @@ export interface MapViewHandle {
   pushFusedPoint(r: FusedResult): void;
   pushRawGpsPoint(lat: number, lon: number): void;
   followVehicle(lat: number, lon: number, headingRad: number): void;
+  /** Pan (and jump the marker) to a raw lat/lon without heading rotation.
+   *  Used when raw geolocation gives us a fix independently of the fused
+   *  stream — no heading, so we can't align the map bearing. */
+  panTo(lat: number, lon: number): void;
   setMatchedPath(points: { lat: number; lon: number }[]): void;
   setSmoothedPath(points: { lat: number; lon: number }[]): void;
   setRoute(geometry: [number, number][] | null): void;
   setDestinationMarker(coord: [number, number] | null): void;
   setStyle(style: MapStyle): void;
-  /** Return to auto-follow after the user has panned/rotated manually. */
+  /** Return to auto-follow AND immediately snap to the last known vehicle
+   *  position, so the button is responsive even if no new sample has come in. */
   recenter(): void;
   /** true if the user manually panned/rotated and we're not auto-following. */
   onUserInteractionChange(cb: (userIsInteracting: boolean) => void): () => void;
@@ -71,6 +76,10 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
   const userInteractingRef = useRef(false);
   const interactionListenersRef = useRef<Set<(v: boolean) => void>>(new Set());
   const suppressUserInteractionRef = useRef(0);   // ignore camera moves we ourselves triggered
+
+  // Last known vehicle position + heading so recenter() can snap immediately
+  // even if no new sample has come in since the user panned away.
+  const lastPosRef = useRef<{ lat: number; lon: number; headingRad: number } | null>(null);
 
   const setUserInteracting = (v: boolean) => {
     if (userInteractingRef.current === v) return;
@@ -314,10 +323,11 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
     },
     followVehicle(lat, lon, headingRad) {
       if (!mapRef.current) return;
+      lastPosRef.current = { lat, lon, headingRad };
+      maybeJumpToFirst(lat, lon);
       // Marker always follows the vehicle, even during user interaction —
       // that just means "here's where you are" not "here's where the camera is".
       markerRef.current?.setLngLat([lon, lat]);
-      // Camera only auto-pans/rotates when the user isn't manually gesturing.
       if (userInteractingRef.current) return;
       suppressUserInteractionRef.current++;
       mapRef.current.easeTo({
@@ -325,6 +335,20 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
         bearing: (headingRad * 180) / Math.PI,
         pitch: 55,               // slight tilt like Google Maps nav mode
         duration: 400,
+        essential: true,
+      });
+    },
+    panTo(lat, lon) {
+      if (!mapRef.current) return;
+      const prevHeading = lastPosRef.current?.headingRad ?? 0;
+      lastPosRef.current = { lat, lon, headingRad: prevHeading };
+      maybeJumpToFirst(lat, lon);
+      markerRef.current?.setLngLat([lon, lat]);
+      if (userInteractingRef.current) return;
+      suppressUserInteractionRef.current++;
+      mapRef.current.easeTo({
+        center: [lon, lat],
+        duration: 500,
         essential: true,
       });
     },
@@ -355,7 +379,21 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
       mapRef.current.setStyle(STYLE_URL[style]);
     },
     recenter() {
+      // Drop the "user is driving the camera" flag AND immediately snap the
+      // camera to the last known vehicle position. If we didn't snap now,
+      // the camera would only move on the next fused sample — which on
+      // desktop (no motion sensors) never arrives.
       setUserInteracting(false);
+      const last = lastPosRef.current;
+      if (!last || !mapRef.current) return;
+      suppressUserInteractionRef.current++;
+      mapRef.current.easeTo({
+        center: [last.lon, last.lat],
+        bearing: (last.headingRad * 180) / Math.PI,
+        pitch: 55,
+        duration: 500,
+        essential: true,
+      });
     },
     onUserInteractionChange(cb) {
       interactionListenersRef.current.add(cb);
