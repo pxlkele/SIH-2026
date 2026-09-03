@@ -1,24 +1,18 @@
-import { useNavigate } from "react-router-dom";
 import { motion } from "motion/react";
 import { LoaderGooeyBlobs } from "@/components/ui/loaders-gooey-blobs";
 
-/**
- * Home at `/`. Persistent brand landing — logo + wordmark fade in, gooey
- * loader animates at the bottom. Tap anywhere to enter the app.
- * No auto-navigate — this IS the home page, not a transient splash.
- */
-export default function Splash() {
-  const navigate = useNavigate();
-
-  const enter = () => navigate("/app");
-
+/** Transient loader shown before the home page reveals. Simple fade,
+ *  gooey loader at the bottom. Presentational only — the parent decides
+ *  when to swap it out for actual content. */
+export function Loader() {
   return (
-    <button
-      onClick={enter}
-      aria-label="Enter Beacon"
-      className="relative flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-black text-white outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+    <motion.div
+      key="loader"
+      initial={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.35 }}
+      className="relative flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-black text-white"
     >
-      {/* Centered wordmark: logo (left) + "Beacon" (right) */}
       <div className="pointer-events-none flex items-center gap-5 sm:gap-8">
         <motion.img
           src="/logo.png"
@@ -39,7 +33,6 @@ export default function Splash() {
         </motion.span>
       </div>
 
-      {/* Subtle depth behind the mark */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 -z-0"
@@ -49,18 +42,14 @@ export default function Splash() {
         }}
       />
 
-      {/* Gooey blob loader — permanent, animating, 40px from bottom */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.6, delay: 0.9 }}
-        className="pointer-events-none absolute inset-x-0 bottom-10 flex flex-col items-center justify-center gap-3 text-white/85"
+        className="pointer-events-none absolute inset-x-0 bottom-10 flex items-center justify-center text-white/85"
       >
         <LoaderGooeyBlobs size={12} color="#ffffff" />
-        <span className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/50">
-          Tap to enter
-        </span>
       </motion.div>
-    </button>
+    </motion.div>
   );
 }

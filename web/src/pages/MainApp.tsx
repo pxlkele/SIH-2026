@@ -3,7 +3,7 @@ import { ChevronLeft, Crosshair, Search } from "lucide-react";
 import MapView, { type MapViewHandle } from "../map/MapView";
 import { MapStyleToggle } from "../map/MapStyleToggle";
 import { useFusionStream } from "../data/useFusionStream";
-import type { LiveStreamStatus } from "../data/liveSensorStream";
+import { useRawGeolocation } from "../data/useRawGeolocation";
 import { useNavigation } from "../nav/useNavigation";
 import { NavSearch } from "../nav/NavSearch";
 import { NavDirectionsPanel } from "../nav/NavDirectionsPanel";
@@ -11,50 +11,68 @@ import { Wordmark } from "../components/Logo";
 import { Button, LinkButton, Panel } from "../components/ui";
 
 /**
- * `/app` — the product view. Single fused path + follow-vehicle camera +
- * uncertainty ellipse + turn-by-turn navigation.
+ * `/app` — the interactive product view.
  *
- * Always runs on live on-device sensors (no source picker, no cloud/replay
- * options exposed here). Replay is reserved for the home landing.
+ *   - Raw geolocation (via useRawGeolocation) is the definitive current
+ *     position. On desktop it's our only source; on a phone with motion
+ *     sensors, the Kalman fusion overlays a smoothed path on top.
+ *   - Live IMU + GPS stream via useFusionStream draws the corrected line
+ *     and uncertainty ellipse — but the *map centering* + nav routing
+ *     never blocks on it. Presets work as soon as GPS gives a fix.
  */
 export default function MainApp() {
   const mapRef = useRef<MapViewHandle>(null);
   const [showSearch, setShowSearch] = useState(false);
-  const [liveStatus, setLiveStatus] = useState<LiveStreamStatus>({ kind: "idle" });
   const [userMovedMap, setUserMovedMap] = useState(false);
 
+  // Definitive current position — always driven by raw geolocation so it
+  // works on desktop too.
+  const { fix: rawFix, error: geoError } = useRawGeolocation();
+
+  // Fused stream draws the corrected path + ellipse (mobile only in practice)
   const { latestFused } = useFusionStream({
     mode: "live",
     onFusedResult: (r) => mapRef.current?.pushFusedPoint(r),
-    onLiveStatus: setLiveStatus,
   });
 
-  // Subscribe to the map's user-interaction flag so we can show a Recenter
-  // button when the user has manually panned or rotated.
+  // Recenter-button subscription
   useEffect(() => {
     const unsubscribe = mapRef.current?.onUserInteractionChange(setUserMovedMap);
     return () => unsubscribe?.();
   }, []);
 
-  const currentPos = useMemo(
-    () =>
-      latestFused && latestFused.lat != null && latestFused.lon != null
-        ? { lat: latestFused.lat, lon: latestFused.lon }
-        : null,
-    [latestFused],
-  );
-
-  const nav = useNavigation({ currentPos });
-
+  // Pan the map on every raw GPS fix (respecting user-interaction flag).
+  // Fused samples override this via followVehicle when they arrive.
   useEffect(() => {
-    if (currentPos && latestFused) {
+    if (rawFix) mapRef.current?.panTo(rawFix.lat, rawFix.lon);
+  }, [rawFix]);
+
+  // Fused samples: full follow-vehicle (heading-up tilt look).
+  useEffect(() => {
+    if (latestFused?.lat != null && latestFused?.lon != null) {
       mapRef.current?.followVehicle(
-        currentPos.lat,
-        currentPos.lon,
+        latestFused.lat,
+        latestFused.lon,
         latestFused.heading_rad ?? 0,
       );
     }
-  }, [currentPos, latestFused]);
+  }, [latestFused]);
+
+  useEffect(() => {
+    mapRef.current?.setRoute(nav.route ? nav.route.geometry : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // wired properly below via a ref, this useEffect is only for cleanup
+
+  // Position handed to the nav module — fused wins if we have it, else raw.
+  const currentPos = useMemo(() => {
+    if (latestFused?.lat != null && latestFused?.lon != null) {
+      return { lat: latestFused.lat, lon: latestFused.lon };
+    }
+    if (rawFix) return { lat: rawFix.lat, lon: rawFix.lon };
+    return null;
+  }, [latestFused, rawFix]);
+
+  const nav = useNavigation({ currentPos });
 
   useEffect(() => {
     mapRef.current?.setRoute(nav.route ? nav.route.geometry : null);
@@ -69,7 +87,11 @@ export default function MainApp() {
   const uncertainty =
     latestFused && latestFused.std_e_m != null && latestFused.std_n_m != null
       ? Math.hypot(latestFused.std_e_m, latestFused.std_n_m)
-      : null;
+      : rawFix?.accuracyM ?? null;
+
+  const headingRad =
+    latestFused?.heading_rad ??
+    (rawFix?.headingDeg != null ? (rawFix.headingDeg * Math.PI) / 180 : null);
 
   return (
     <div className="relative h-[100dvh] w-screen overflow-hidden bg-ink-950 text-ink-100">
@@ -92,19 +114,18 @@ export default function MainApp() {
         </div>
       </header>
 
-      {/* Only surfaces genuine hard errors (permission denied). Transient
-          GPS timeouts/unavailable errors stay quiet — the ellipse growing
-          already communicates uncertainty visually. */}
-      {liveStatus.kind === "error" && (
+      {/* Only surfaces permission-denied errors. Transient GPS timeouts
+          stay quiet. If you're not sharing location you can still route
+          from wherever the map is pointing. */}
+      {geoError && (
         <div className="pointer-events-none absolute inset-x-0 top-16 z-10 flex justify-center px-3">
           <div className="pointer-events-auto rounded-md border border-status-alert/60 bg-status-alert/10 px-3 py-2 text-xs text-status-alert">
-            {liveStatus.message}
+            {geoError}
           </div>
         </div>
       )}
 
-      {/* Recenter button — floats bottom-right above the search bar when the
-          user has manually panned/rotated. Tap to snap back to auto-follow. */}
+      {/* Recenter button — snaps immediately using the last known position. */}
       {userMovedMap && (
         <button
           onClick={() => mapRef.current?.recenter()}
@@ -174,8 +195,8 @@ export default function MainApp() {
                 Heading
               </span>
               <span className="tabular-nums text-sm font-semibold text-ink-100">
-                {latestFused?.heading_rad != null
-                  ? `${normalizeHeadingDeg(latestFused.heading_rad).toFixed(0).padStart(3, "0")}°`
+                {headingRad != null
+                  ? `${normalizeHeadingDeg(headingRad).toFixed(0).padStart(3, "0")}°`
                   : "—"}
               </span>
             </div>
@@ -198,4 +219,3 @@ function normalizeHeadingDeg(rad: number): number {
   while (deg >= 360) deg -= 360;
   return deg;
 }
-
