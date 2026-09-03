@@ -34,8 +34,16 @@ interface Options {
   onMotionMode?: (mode: MotionMode, probs: Record<MotionMode, number>) => void;
 }
 
-interface Handle {
+export interface Handle {
   stop(): void;
+  /**
+   * Simulate a GPS blackout. While true, GPS fixes still arrive from the
+   * browser but are hidden from the Kalman filter — it goes into pure
+   * dead-reckoning mode. Toggle off to resume normal fusion. Used to
+   * demonstrate tunnel behaviour on demand without waiting for a real
+   * blackout. Angad's request for the pitch.
+   */
+  setGpsBlocked(blocked: boolean): void;
 }
 
 export async function startLiveSensorStream({
@@ -95,6 +103,11 @@ export async function startLiveSensorStream({
   // GPS state — updated by watchPosition, consumed on the next IMU tick
   let pendingGps: { lat: number; lon: number; accuracyM: number; consumed: boolean } | null = null;
 
+  // Demo control: when true, GPS fixes are dropped before they reach the
+  // filter. The Kalman goes into pure dead-reckoning mode. Toggled from the
+  // /app UI to trigger the tunnel scenario on demand.
+  let gpsBlocked = false;
+
   const watchId = navigator.geolocation.watchPosition(
     (pos) => {
       pendingGps = {
@@ -133,7 +146,7 @@ export async function startLiveSensorStream({
     const DEG2RAD = Math.PI / 180;
 
     const now = Date.now();
-    const useGps = pendingGps && !pendingGps.consumed;
+    const useGps = !gpsBlocked && pendingGps && !pendingGps.consumed;
     const sample: Sample = {
       timestampMs: now,
       accelX: ax,
@@ -195,6 +208,10 @@ export async function startLiveSensorStream({
   onStatus?.({ kind: "running", imuHz: 0, gpsFixes: 0 });
 
   return {
+    setGpsBlocked(blocked: boolean) {
+      gpsBlocked = blocked;
+      console.info("[live-sensor] gpsBlocked:", blocked);
+    },
     stop() {
       window.removeEventListener("devicemotion", handleMotion);
       navigator.geolocation.clearWatch(watchId);

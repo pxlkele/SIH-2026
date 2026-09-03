@@ -36,8 +36,11 @@
 
 ## Hardware-side fusion / live path
 - [ ] Wire sensor output to the live-ingestion transport (WebSocket) chosen with Aleena
+      note: **Palak has an alternative path already live** — `web/src/data/liveSensorStream.ts` reads DeviceMotion + Geolocation directly in the browser and runs the Kalman on-device (TypeScript port). If your hardware rig can be replaced with an Android/iOS phone browser, the whole websocket-to-backend hop is optional. The Aleena backend + serve_stdio.py path still works for hardware sensors.
 - [ ] Handshake / reconnect behavior for the demo (wifi at the venue is unreliable)
-- [ ] GPS-loss simulation trigger for the demo scenario (physical or software)
+      note: on-device path (above) removes the wifi dependency entirely for the demo. Keeping the ws path as fallback is good but not blocking.
+- [x] GPS-loss simulation trigger for the demo scenario (physical or software)
+      note: **shipped by Palak in the browser** — /app has a "Simulate tunnel" button (bottom-right, above recenter). Toggles a `gpsBlocked` flag in the live sensor stream so the Kalman goes into pure dead-reckoning mode on demand. Ready for the pitch vlog.
 
 ## Venue-readiness
 - [ ] Sensor rig runs off battery for the length of the demo slot + rehearsal
@@ -45,5 +48,7 @@
 - [ ] Test full sensor → backend → frontend loop in venue-like network conditions (not just dev machine)
 
 ## Coordination
-- [ ] Agree on live-ingestion schema with Palak + Aleena (blocker)
-- [ ] Handshake with Palak on the model API surface (what `step(sample) -> position` looks like)
+- [x] Agree on live-ingestion schema with Palak + Aleena
+      note: **confirmed by Palak (2026-09-03)**. Locked schema: `timestamp_ms` (int), `accel_x/y/z` (m/s², device frame), `gyro_x/y/z` (rad/s, device frame), `gps_lat/lon` (nullable, WGS84), `gps_accuracy_m` (nullable). This is what `model/serve_stdio.py` accepts and what my TypeScript port in `web/src/kalman/stepper.ts` uses. Documented in `data_schema.md`.
+- [x] Handshake with Palak on the model API surface (what `step(sample) -> position` looks like)
+      note: **confirmed by Palak (2026-09-03)**. The interface is `SessionStepper.step(sample) -> FusedResult`. Same shape in Python (`model/stepper.py`) and TypeScript (`web/src/kalman/stepper.ts`) — bit-for-bit parity verified via `model/smoke_stdio.py`. FusedResult carries lat/lon + heading + full 2×2 covariance + gps_used flag.

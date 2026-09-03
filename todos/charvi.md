@@ -1,12 +1,15 @@
 # Charvi — To-Do
 
-**Role:** Frontend — **marketing / landing website owner** (+ optional design polish on the app)
+**Role:** Frontend — **visual polish + brand iteration** on Palak's shipped product surface
 
-> **Scope clarified (2026-09-03):** the split is now clean.
-> - **Charvi** owns the **marketing / landing website** — the entry surface at `/`. This is your build.
-> - **Palak** owns the **interactive app** — `/app` (map + turn-by-turn nav) and `/demo` (split-screen pitch showcase). Those are already built and deployed at `web/`.
+> **Scope revised again (2026-09-04):** Palak built the whole interactive
+> product — Loader, Home, /app, /demo — and deployed it at
+> **https://beacon-sih.vercel.app**. The Home page already covers most of
+> what "marketing landing" would have done (Navigate CTA, recent drive
+> preview, replay link, settings).
 >
-> You do NOT need to touch the app code. If you want to polish the app's visual design after your landing is up, that's a bonus — but the landing site is the ship-critical thing on your plate.
+> Your remaining lane: any visual polish / animation / brand iteration you
+> want to layer on top. Not ship-blocking.
 
 ## The landing site (`/`)
 

@@ -1,18 +1,53 @@
-# SIH26168 · Frontend (`web/`)
+# Beacon · Frontend (`web/`)
 
-React app for the Intelligent Dead Reckoning project. Consumes Aleena's
-Socket.io backend, renders live GPS + Kalman-fused paths on a Mapbox GL
-map, plus turn-by-turn navigation.
+React PWA for the Intelligent Dead Reckoning demo. Runs the Kalman
+filter fully on-device (TypeScript port), consumes live phone sensors
+via DeviceMotion + Geolocation, renders live paths on Mapbox GL, and
+falls back to precomputed / cached data when the network drops.
 
-**Ownership split (2026-09-03):**
-- **`/app` and `/demo`** — Palak. Interactive product + pitch showcase.
-- **`/` (marketing/landing)** — Charvi. Currently a redirect to `/app` as a placeholder until her landing lands.
+Live: **https://beacon-sih.vercel.app** — installable as an Android PWA
+(add-to-home-screen) or wrapped as an APK via PWABuilder.
+
+**Ownership split:**
+- **`/`, `/app`, `/demo`** — Palak. Full interactive product surface built
+  since 2026-09-03. Splash + home + interactive map + turn-by-turn +
+  pitch showcase.
+- **Marketing / brand polish** — Charvi. Optional visual iteration on
+  top of the shipped surface (colors, animations, awwwards feel).
+
+## Routes
+
+| Path | What |
+|---|---|
+| `/` | Loader (~1.8s fade) → Home. Big Navigate CTA, most-recent-drive card with Strava-style route preview, Replay demo link, settings sheet (login placeholders + offline tile cache). |
+| `/app` | Live product view: satellite map, turn-by-turn nav (Mapbox Directions + offline fallback), live IMU + GPS + Kalman fusion, on-device motion-mode classifier, session logging, recenter button. |
+| `/demo` | Split-screen raw-GPS vs Kalman-fused. Session picker in the header — pick the pre-shipped 3.2 km sample drive or any locally-recorded session. GPS-loss pill, drift-counter HUD. |
 
 ## Stack
-- **Vite + React + TypeScript** (fast HMR, one-command deploys to Vercel)
-- **Mapbox GL JS** for the map layers (imperative updates, no React re-render on 30-50 Hz socket events)
-- **socket.io-client** for backend transport
-- **Tailwind + shadcn/ui** for UI
+- **Vite + React + TypeScript** — one-command Vercel deploys
+- **Mapbox GL JS** — map, tiles, imperative updates (no React re-render on 30-50 Hz socket events)
+- **Motion (`motion/react`)** — animations, splash, sheets
+- **socket.io-client** — for the (optional) Aleena backend path
+- **vite-plugin-pwa + workbox** — manifest, service worker, offline tile cache
+- **Tailwind CSS + tiny shadcn-style UI kit** — `src/components/ui.tsx`
+- **@/-alias** for `src/`, with `cn()` helper in `src/lib/utils.ts`
+
+## On-device intelligence
+
+Everything below runs in the browser — no server calls needed:
+
+- **Kalman filter** — ported from `../model/*.py` to `src/kalman/*.ts`.
+  Same equations, same tuning, ~200 lines of pure math. Runs at IMU rate.
+- **Motion-mode classifier** — 6-feature logistic regression trained on
+  our real captures (`../model/motion_classifier/train.py`), weights
+  shipped as `public/motion_classifier.json`, inference in
+  `src/motion/classifier.ts`. Predicts walking / driving / stationary
+  from a rolling 2-second IMU window.
+- **Session logger** — `src/data/sessionStore.ts`. IndexedDB, 1 Hz
+  subsample per session (~7 KB per 10-min drive). Exportable as CSV.
+- **Offline routes** — `public/preset_routes.json` ships precomputed
+  Mapbox Directions responses for 5 preset destinations, used
+  automatically when the live Directions API fails.
 
 ## Setup
 
@@ -24,59 +59,104 @@ cp .env.example .env.local
 npm run dev
 ```
 
-If `VITE_BACKEND_URL` is unset (default), the app runs against a **built-in mock stream** — synthetic 60s scenario with a 20s GPS-loss window, generated live in the browser. Perfect for UI dev without needing Aleena's server running.
-
-To point at a real backend:
+`.env.local`:
 ```
-VITE_BACKEND_URL=http://localhost:3000
+VITE_MAPBOX_TOKEN=pk.your_token_here
+VITE_BACKEND_URL=  # optional — falls back to on-device / replay mode
 ```
-
-## Routes
-- **`/`** — redirects to `/app` for now. Reserved for Charvi's landing.
-- **`/app`** — the product view. Single fused path, follow-vehicle camera, confidence ellipse, DR-active badge, **turn-by-turn navigation** (Mapbox Directions).
-- **`/demo`** — the pitch showcase. Split-screen raw-GPS vs Kalman-fused, synchronised cameras, GPS-lost centre pill, drift-counter HUD. Uses real drive data from `data/real/output/sep02a/*.csv`.
 
 ## Layout
 
 ```
 web/
 ├── public/
-│   ├── data/                # drive_corrected.csv + drive_raw_gps.csv
-│   │                        # (real 3.2 km drive, replayed in /demo)
-│   └── favicon.svg
+│   ├── data/                     # drive_corrected.csv + drive_raw_gps.csv
+│   │                             # (real 3.2 km drive replayed on /demo)
+│   ├── logo.png                  # brand mark
+│   ├── pwa-*.png                 # launcher icons
+│   ├── motion_classifier.json    # trained ML weights
+│   ├── preset_routes.json        # offline-routable preset destinations
+│   ├── manifest.webmanifest      # generated by vite-plugin-pwa
+│   └── sw.js                     # generated service worker
+├── scripts/
+│   └── gen_icons.py              # regenerate PWA icons from logo-source.png
 ├── src/
-│   ├── App.tsx              # router
-│   ├── main.tsx             # entry
-│   ├── index.css            # tailwind + mapbox css
+│   ├── App.tsx                   # router + FirstMountLoader
+│   ├── main.tsx
+│   ├── index.css                 # tailwind + mapbox css
 │   ├── pages/
-│   │   ├── MainApp.tsx      # /app  — product view + turn-by-turn
-│   │   └── DemoView.tsx     # /demo — pitch showcase (split-screen)
+│   │   ├── Loader.tsx            # gooey-blob splash
+│   │   ├── Home.tsx              # / — Navigate CTA + recent drive + settings
+│   │   ├── MainApp.tsx           # /app
+│   │   └── DemoView.tsx          # /demo
 │   ├── map/
-│   │   └── MapView.tsx      # Mapbox GL wrapper — imperative API, no re-render on socket events
+│   │   ├── MapView.tsx           # Mapbox GL wrapper, imperative API
+│   │   └── MapStyleToggle.tsx    # dark / streets / satellite
 │   ├── nav/
-│   │   ├── mapboxApi.ts     # Mapbox Geocoding + Directions wrappers
-│   │   ├── useNavigation.ts # route state + step-advance hook
-│   │   ├── NavSearch.tsx    # destination search input
-│   │   └── NavDirectionsPanel.tsx  # turn-by-turn overlay
+│   │   ├── mapboxApi.ts          # Directions + Geocoding + offline preset fallback
+│   │   ├── useNavigation.ts      # route state + auto-advance
+│   │   ├── NavSearch.tsx         # search + preset chips
+│   │   └── NavDirectionsPanel.tsx
+│   ├── kalman/                   # TypeScript port of the Python filter
+│   │   ├── frames.ts             # lat/lon <-> ENU, heading, accel rotation
+│   │   ├── matrix.ts             # fixed-size lin-alg helpers
+│   │   ├── filter.ts             # KalmanFilter2D
+│   │   └── stepper.ts            # SessionStepper (bootstrap + run)
+│   ├── motion/
+│   │   └── classifier.ts         # in-browser inference for the mode classifier
 │   ├── data/
-│   │   ├── types.ts         # FusedResult + MatchedPathPoint wire types
-│   │   ├── useFusionStream.ts   # socket.io client hook (with mock fallback)
-│   │   └── driveReplay.ts   # loads /data/*.csv and replays with fake outage
-│   └── components/
-│       ├── Logo.tsx         # Beacon wordmark + radar mark
-│       └── ui.tsx           # Button, LinkButton, Panel, Pill, Eyebrow
-├── tailwind.config.js
-├── .env.example
+│   │   ├── types.ts              # FusedResult wire shape
+│   │   ├── useFusionStream.ts    # live | replay | backend switcher
+│   │   ├── liveSensorStream.ts   # DeviceMotion + Geolocation → Kalman
+│   │   ├── driveReplay.ts        # sample-drive replay
+│   │   ├── sessionReplay.ts      # replay from IndexedDB
+│   │   ├── sessionStore.ts       # IndexedDB session log + CSV export
+│   │   ├── useRawGeolocation.ts  # watchPosition + permission state + requestFresh
+│   │   ├── tileCache.ts          # offline tile pre-download
+│   │   └── OfflineCacheButton.tsx
+│   ├── components/
+│   │   ├── Logo.tsx              # <Logo /> + <Wordmark />
+│   │   ├── ui.tsx                # Button, LinkButton, Panel, Pill, Eyebrow
+│   │   ├── RouteMapPreview.tsx   # Strava-style static map for home card
+│   │   └── ui/loaders-gooey-blobs.tsx
+│   └── lib/
+│       ├── polyline.ts           # Google polyline encoder for Mapbox Static API
+│       └── utils.ts              # cn() helper
+├── vercel.json                   # SPA rewrite: /((?!.*\..*).*) → /index.html
+├── vite.config.ts                # PWA config + @/-alias
 └── package.json
 ```
 
-## Backend contract
-Documented in `../model/README.md :: Inference API`. Two events matter:
-- `fused_result` — every sample. See `src/data/types.ts :: FusedResult`.
-- `matched_path` — batched (~every 5s), road-snapped geometry from OSRM.
+## What works airplane-mode / offline
 
-## Landing (`/`) is Charvi's lane
-Currently `/` redirects to `/app` as a placeholder. Charvi replaces that
-with the marketing landing site — either in this repo (`src/pages/Landing.tsx`
-+ update `App.tsx` routing) or as a separate Vercel deploy that links to
-this app's `/app` and `/demo` URLs. See `../todos/charvi.md`.
+| Capability | Offline? |
+|---|---|
+| Live GPS position | ✅ GPS is satellite receive-only |
+| IMU dead-reckoning + Kalman fusion | ✅ 100% on-device |
+| Motion-mode classifier | ✅ weights baked in |
+| Map tiles for cached areas | ✅ Offline Cache Button in home settings |
+| Turn-by-turn to any **preset** destination | ✅ via `preset_routes.json` fallback |
+| Turn-by-turn to a **searched** destination | ❌ Mapbox Directions needs network |
+| Free-text destination search | ❌ Mapbox Geocoding needs network |
+| Continuing an already-started route | ✅ route stays in memory |
+
+Demo playbook: start route + drive through the demo area **with wifi**
+(tiles + route cache themselves), turn airplane mode on, drive into a
+tunnel. GPS-lost pill fires, dead reckoning takes over, Google Maps on
+the other phone freezes.
+
+## Deploy
+
+```bash
+git push origin main   # Vercel auto-deploys web/ subdirectory
+```
+
+Vercel project config: root directory = `web`, environment variable
+`VITE_MAPBOX_TOKEN` set for all environments. `vercel.json` handles
+SPA rewrites so `/app` and `/demo` hard-loads don't 404.
+
+## APK
+
+The PWA is packaged via [PWABuilder](https://pwabuilder.com) — paste
+the deployed URL, pick Android, download the signed APK. Sideload
+onto any Android device.

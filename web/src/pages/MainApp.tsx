@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, Crosshair, Loader2, MapPinOff, Search } from "lucide-react";
+import { ChevronLeft, Crosshair, Loader2, MapPinOff, Search, Signal, SignalZero } from "lucide-react";
 import MapView, { type MapViewHandle } from "../map/MapView";
 import { MapStyleToggle } from "../map/MapStyleToggle";
 import { useFusionStream } from "../data/useFusionStream";
@@ -41,7 +41,7 @@ export default function MainApp() {
   const { fix: rawFix, error: geoError, permission: geoPermission, isRequesting: geoLoading, requestFresh: requestFreshFix } = useRawGeolocation();
 
   // Fused stream draws the corrected path + ellipse (mobile only in practice)
-  const { latestFused } = useFusionStream({
+  const { latestFused, gpsBlocked, setGpsBlocked } = useFusionStream({
     mode: "live",
     onFusedResult: (r) => {
       mapRef.current?.pushFusedPoint(r);
@@ -198,6 +198,31 @@ export default function MainApp() {
         <div className="pointer-events-none absolute inset-x-0 top-16 z-10 flex justify-center px-3">
           <div className="pointer-events-auto rounded-md border border-status-alert/60 bg-status-alert/10 px-3 py-2 text-xs text-status-alert">
             {geoError}
+          </div>
+        </div>
+      )}
+
+      {/* Simulate-tunnel button — sits just above the recenter. Toggles
+          gpsBlocked in the live sensor stream so the Kalman goes into
+          pure dead-reckoning mode on demand. For pitch / vlog use. */}
+      <button
+        onClick={() => setGpsBlocked(!gpsBlocked)}
+        className={
+          "pointer-events-auto absolute bottom-56 right-4 z-20 flex h-11 w-11 items-center justify-center rounded-full border shadow-raised backdrop-blur transition sm:bottom-60 " +
+          (gpsBlocked
+            ? "border-status-alert/60 bg-status-alert text-white hover:bg-status-alert/90"
+            : "border-ink-700 bg-ink-900/85 text-ink-300 hover:bg-ink-800")
+        }
+        aria-label={gpsBlocked ? "Restore GPS" : "Simulate tunnel (block GPS)"}
+        title={gpsBlocked ? "Restore GPS" : "Simulate tunnel"}
+      >
+        {gpsBlocked ? <SignalZero size={18} /> : <Signal size={18} />}
+      </button>
+
+      {gpsBlocked && (
+        <div className="pointer-events-none absolute inset-x-0 top-16 z-10 flex justify-center px-3">
+          <div className="pointer-events-auto rounded-full border border-status-alert/60 bg-status-alert/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-status-alert backdrop-blur">
+            Simulated tunnel · GPS blocked · IMU only
           </div>
         </div>
       )}

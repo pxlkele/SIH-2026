@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import type { FusedResult, MatchedPathPoint } from "./types";
 import { startDriveReplay } from "./driveReplay";
-import { startLiveSensorStream, type LiveStreamStatus } from "./liveSensorStream";
+import { startLiveSensorStream, type Handle as LiveHandle, type LiveStreamStatus } from "./liveSensorStream";
 import type { MotionMode } from "../motion/classifier";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL as string | undefined;
@@ -26,7 +26,9 @@ interface Options {
  *   - "replay":  play back the pre-recorded 3.2 km drive from public/data/
  *   - "backend": subscribe to Aleena's socket.io server (needs VITE_BACKEND_URL)
  *
- * Also derives DR-active state, GPS-lost timer, and drift-from-raw-GPS for HUDs.
+ * Returns derived HUD state (DR-active, GPS-lost timer, drift) plus a
+ * `setGpsBlocked` control used by the demo "trigger tunnel" button — only
+ * meaningful in "live" mode.
  */
 export function useFusionStream({
   onFusedResult,
@@ -36,6 +38,7 @@ export function useFusionStream({
   onMotionMode,
 }: Options = {}) {
   const socketRef = useRef<Socket | null>(null);
+  const liveHandleRef = useRef<LiveHandle | null>(null);
   const lastGpsUsedTsRef = useRef<number | null>(null);
   const lastRawGpsRef = useRef<{ lat: number; lon: number } | null>(null);
 
@@ -43,6 +46,7 @@ export function useFusionStream({
   const [isDRActive, setIsDRActive] = useState(false);
   const [gpsLostSeconds, setGpsLostSeconds] = useState(0);
   const [driftMeters, setDriftMeters] = useState<number | null>(null);
+  const [gpsBlocked, setGpsBlockedState] = useState(false);
 
   useEffect(() => {
     const handle = (r: FusedResult) => {
@@ -69,22 +73,22 @@ export function useFusionStream({
     }
 
     if (mode === "live") {
-      let stopFn: (() => void) | null = null;
       let cancelled = false;
       void startLiveSensorStream({
         onFusedResult: handle,
         onStatus: (s) => onLiveStatus?.(s),
         onMotionMode: (m, p) => onMotionMode?.(m, p),
-      }).then((handle) => {
+      }).then((h) => {
         if (cancelled) {
-          handle?.stop();
+          h?.stop();
           return;
         }
-        stopFn = handle?.stop ?? null;
+        liveHandleRef.current = h;
       });
       return () => {
         cancelled = true;
-        stopFn?.();
+        liveHandleRef.current?.stop();
+        liveHandleRef.current = null;
       };
     }
 
@@ -110,9 +114,14 @@ export function useFusionStream({
     return () => clearInterval(iv);
   }, [latestFused]);
 
+  const setGpsBlocked = useCallback((blocked: boolean) => {
+    setGpsBlockedState(blocked);
+    liveHandleRef.current?.setGpsBlocked(blocked);
+  }, []);
+
   return useMemo(
-    () => ({ latestFused, isDRActive, gpsLostSeconds, driftMeters }),
-    [latestFused, isDRActive, gpsLostSeconds, driftMeters],
+    () => ({ latestFused, isDRActive, gpsLostSeconds, driftMeters, gpsBlocked, setGpsBlocked }),
+    [latestFused, isDRActive, gpsLostSeconds, driftMeters, gpsBlocked, setGpsBlocked],
   );
 }
 

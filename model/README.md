@@ -1,12 +1,25 @@
-# Kalman fusion model — SIH26168
+# Beacon model layer — SIH26168
 
 **Ownership:**
 - **Angad** — the state-space filter itself (`kalman.py`, `frames.py`)
-- **Palak** — tuning on real data, inference-serving API on top, demo
+- **Palak** — tuning on real data, inference-serving API on top, ML
+  motion-mode classifier, RTS smoother, demo
 
-Fuses raw IMU + GPS (per the locked `../data_schema.md`) into a corrected 2D
-path for dead reckoning through GPS gaps. The first cut in this folder was
-scaffolded by Palak to unblock the pipeline — Angad may refactor freely.
+Two components live here:
+
+1. **Classical linear Kalman filter** — 2D position + velocity in local ENU,
+   IMU as control input, GPS as measurement update. Provably-optimal
+   Bayesian state estimation under Gaussian noise. Cheap enough to run in
+   a browser tab; the whole thing is also ported to TypeScript in
+   `../web/src/kalman/`.
+2. **Motion-mode classifier** (`motion_classifier/`) — small logistic
+   regression trained on our real IMU captures, classifies each 2-second
+   window as walking / driving / stationary. Runs on-device in the browser
+   after training; weights ship as JSON.
+
+Together: hybrid Bayesian inference + a lightweight learned classifier, both
+on-device, no ML runtime, no cloud. Chosen over end-to-end deep learning for
+interpretability, data efficiency, and mobile-first deployment.
 
 ## Design (first cut)
 
@@ -227,6 +240,49 @@ The smoother is only useful **post-run** (needs the whole log). Live demo
 still uses the online `SessionStepper`. RTS is for the playback moment —
 "here's the definitive trajectory."
 
+## Motion-mode classifier (`motion_classifier/`)
+
+Small logistic regression that predicts walking / driving / stationary from
+a 2-second window of IMU data. Runs alongside the Kalman filter as a
+lightweight learned component.
+
+### Training (`train.py`)
+
+- Loads the 5 labeled real captures under `data/real/`
+  (ios_test_2026-08-24 = stationary, ios_drive_2026-08-24 + 08-29 = walking,
+  ios_drive_2026-09-02a + 02b = driving)
+- Extracts 6 features per 2-second window: `accel_mag_mean`, `accel_mag_std`,
+  `gyro_mag_mean`, `gyro_mag_std`, `accel_z_std`, `gyro_z_std`
+- Trains multinomial logistic regression via full-batch gradient descent with
+  inverse-frequency class weights (driving is 27× more common than walking
+  in our data — plain cross-entropy would just predict "driving" always)
+- Exports normalised weights + biases as JSON:
+  `../web/public/motion_classifier.json`
+
+Pure numpy — no sklearn, no PyTorch, no external ML library. Regenerate via:
+
+```bash
+python model/motion_classifier/train.py
+```
+
+### Per-class recall on our data
+
+| Class | Recall | Samples |
+|---|---|---|
+| Stationary | 100% | 1 |
+| Walking | **88.9%** | 36 |
+| Driving | **91.7%** | 988 |
+
+Overall accuracy 91.6%. Balanced despite the extreme class imbalance
+thanks to the class-weighted loss.
+
+### Inference on-device
+
+`web/src/motion/classifier.ts` loads the JSON weights once, extracts the
+same 6 features from a rolling IMU window in the browser, and outputs the
+top class + confidence. No ML runtime needed — it's a dot product + softmax
+in ~50 lines. Ships as part of the PWA bundle.
+
 ## What's next
 
 - Swap `synth/synth_log.csv` for Raga's real car log when available; re-tune
@@ -234,5 +290,9 @@ still uses the online `SessionStepper`. RTS is for the playback moment —
 - Get a real drive log with an actual GPS-outage segment (tunnel, basement)
   so the smoother has something dramatic to demo against.
 - Add IMU bias state if the real log shows measurable accelerometer drift.
+- Feed the motion classifier's output back into the Kalman config so
+  `accel_process_std` auto-tunes per mode (walking wants a lower value than
+  driving). Currently the classifier just reports; the filter uses a fixed
+  default.
 - Aleena wires `serve_stdio.py` behind the WebSocket endpoint (spawn one
   process per socket connection, pipe JSON both ways).
