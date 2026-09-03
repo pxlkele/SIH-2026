@@ -1,40 +1,40 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, Navigation, Search } from "lucide-react";
+import { ChevronLeft, Crosshair, Search } from "lucide-react";
 import MapView, { type MapViewHandle } from "../map/MapView";
 import { MapStyleToggle } from "../map/MapStyleToggle";
-import { useFusionStream, type SourceMode } from "../data/useFusionStream";
-import { SourcePicker } from "../data/SourcePicker";
-import { OfflineCacheButton } from "../data/OfflineCacheButton";
+import { useFusionStream } from "../data/useFusionStream";
 import type { LiveStreamStatus } from "../data/liveSensorStream";
 import { useNavigation } from "../nav/useNavigation";
 import { NavSearch } from "../nav/NavSearch";
 import { NavDirectionsPanel } from "../nav/NavDirectionsPanel";
 import { Wordmark } from "../components/Logo";
-import { Button, LinkButton, Panel, Pill } from "../components/ui";
-
-const BACKEND_CONFIGURED = Boolean(import.meta.env.VITE_BACKEND_URL);
+import { Button, LinkButton, Panel } from "../components/ui";
 
 /**
  * `/app` — the product view. Single fused path + follow-vehicle camera +
- * uncertainty ellipse + turn-by-turn navigation. This is the "here's what
- * a user actually sees" surface.
+ * uncertainty ellipse + turn-by-turn navigation.
  *
- * The pitch line: our navigation doesn't break when GPS does. Enter a
- * destination, get a route, drive into a tunnel — everyone else's blue
- * dot freezes; ours keeps advancing along the route because the IMU takes
- * over. Same UX as Google Maps, plus the thing Google Maps can't do.
+ * Always runs on live on-device sensors (no source picker, no cloud/replay
+ * options exposed here). Replay is reserved for the home landing.
  */
 export default function MainApp() {
   const mapRef = useRef<MapViewHandle>(null);
   const [showSearch, setShowSearch] = useState(false);
-  const [sourceMode, setSourceMode] = useState<SourceMode>("live");
   const [liveStatus, setLiveStatus] = useState<LiveStreamStatus>({ kind: "idle" });
+  const [userMovedMap, setUserMovedMap] = useState(false);
 
-  const { latestFused, isDRActive } = useFusionStream({
-    mode: sourceMode,
+  const { latestFused } = useFusionStream({
+    mode: "live",
     onFusedResult: (r) => mapRef.current?.pushFusedPoint(r),
     onLiveStatus: setLiveStatus,
   });
+
+  // Subscribe to the map's user-interaction flag so we can show a Recenter
+  // button when the user has manually panned or rotated.
+  useEffect(() => {
+    const unsubscribe = mapRef.current?.onUserInteractionChange(setUserMovedMap);
+    return () => unsubscribe?.();
+  }, []);
 
   const currentPos = useMemo(
     () =>
@@ -46,7 +46,6 @@ export default function MainApp() {
 
   const nav = useNavigation({ currentPos });
 
-  // Follow the vehicle
   useEffect(() => {
     if (currentPos && latestFused) {
       mapRef.current?.followVehicle(
@@ -57,21 +56,14 @@ export default function MainApp() {
     }
   }, [currentPos, latestFused]);
 
-  // Push the route geometry + destination pin to the map when they change
   useEffect(() => {
-    if (nav.route) {
-      mapRef.current?.setRoute(nav.route.geometry);
-    } else {
-      mapRef.current?.setRoute(null);
-    }
+    mapRef.current?.setRoute(nav.route ? nav.route.geometry : null);
   }, [nav.route]);
 
   useEffect(() => {
-    if (nav.destination) {
-      mapRef.current?.setDestinationMarker([nav.destination.lon, nav.destination.lat]);
-    } else {
-      mapRef.current?.setDestinationMarker(null);
-    }
+    mapRef.current?.setDestinationMarker(
+      nav.destination ? [nav.destination.lon, nav.destination.lat] : null,
+    );
   }, [nav.destination]);
 
   const uncertainty =
@@ -81,7 +73,11 @@ export default function MainApp() {
 
   return (
     <div className="relative h-[100dvh] w-screen overflow-hidden bg-ink-950 text-ink-100">
-      <MapView ref={mapRef} showLayers={["route", "corrected", "ellipse"]} initialStyle="satellite" />
+      <MapView
+        ref={mapRef}
+        showLayers={["route", "corrected", "ellipse"]}
+        initialStyle="satellite"
+      />
 
       {/* Top nav */}
       <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-between p-3 sm:p-4">
@@ -91,42 +87,32 @@ export default function MainApp() {
         <div className="pointer-events-auto hidden rounded-md border border-ink-700 bg-ink-900/80 px-3 py-1.5 backdrop-blur sm:block">
           <Wordmark />
         </div>
-        <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-2">
-          <SourcePicker
-            mode={sourceMode}
-            onChange={(m) => {
-              mapRef.current?.clear();
-              setSourceMode(m);
-            }}
-            backendConfigured={BACKEND_CONFIGURED}
-          />
+        <div className="pointer-events-auto">
           <MapStyleToggle onChange={(s) => mapRef.current?.setStyle(s)} />
-          {isDRActive ? (
-            <Pill tone="warn" dot>
-              <Navigation size={11} />
-              Dead reckoning
-            </Pill>
-          ) : (
-            <Pill tone="ok" dot>
-              GPS lock
-            </Pill>
-          )}
         </div>
       </header>
 
-      {sourceMode === "live" && liveStatus.kind === "error" && (
+      {/* Only surfaces genuine hard errors (permission denied). Transient
+          GPS timeouts/unavailable errors stay quiet — the ellipse growing
+          already communicates uncertainty visually. */}
+      {liveStatus.kind === "error" && (
         <div className="pointer-events-none absolute inset-x-0 top-16 z-10 flex justify-center px-3">
           <div className="pointer-events-auto rounded-md border border-status-alert/60 bg-status-alert/10 px-3 py-2 text-xs text-status-alert">
             {liveStatus.message}
           </div>
         </div>
       )}
-      {sourceMode === "live" && liveStatus.kind === "running" && (
-        <div className="pointer-events-none absolute inset-x-0 top-16 z-10 flex justify-center px-3">
-          <Pill tone="ok" dot className="pointer-events-auto">
-            Live · {liveStatus.imuHz} Hz IMU · {liveStatus.gpsFixes} GPS fixes
-          </Pill>
-        </div>
+
+      {/* Recenter button — floats bottom-right above the search bar when the
+          user has manually panned/rotated. Tap to snap back to auto-follow. */}
+      {userMovedMap && (
+        <button
+          onClick={() => mapRef.current?.recenter()}
+          className="pointer-events-auto absolute bottom-40 right-4 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-ink-700 bg-ink-900/85 text-accent-bright shadow-raised backdrop-blur transition hover:bg-ink-800 sm:bottom-44"
+          aria-label="Recenter on vehicle"
+        >
+          <Crosshair size={18} />
+        </button>
       )}
 
       {/* Search overlay */}
@@ -201,10 +187,6 @@ export default function MainApp() {
             {nav.error}
           </div>
         )}
-
-        <div className="pointer-events-auto self-center sm:self-start">
-          <OfflineCacheButton />
-        </div>
       </div>
     </div>
   );
@@ -216,3 +198,4 @@ function normalizeHeadingDeg(rad: number): number {
   while (deg >= 360) deg -= 360;
   return deg;
 }
+

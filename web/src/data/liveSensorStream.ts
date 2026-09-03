@@ -80,7 +80,13 @@ export async function startLiveSensorStream({
       gpsFixes++;
     },
     (err) => {
-      onStatus?.({ kind: "error", message: `GPS error: ${err.message}` });
+      // Only surface permission denials — timeouts and transient position-
+      // unavailable errors are normal (walls, indoor, cold-start) and just
+      // spamming the UI. The IMU-only dead-reckoning path still runs.
+      console.warn("[geolocation] error", err.code, err.message);
+      if (err.code === err.PERMISSION_DENIED) {
+        onStatus?.({ kind: "error", message: "Location permission denied" });
+      }
     },
     { enableHighAccuracy: true, maximumAge: 500, timeout: 15000 },
   );

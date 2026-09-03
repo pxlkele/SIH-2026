@@ -16,6 +16,10 @@ export interface MapViewHandle {
   setRoute(geometry: [number, number][] | null): void;
   setDestinationMarker(coord: [number, number] | null): void;
   setStyle(style: MapStyle): void;
+  /** Return to auto-follow after the user has panned/rotated manually. */
+  recenter(): void;
+  /** true if the user manually panned/rotated and we're not auto-following. */
+  onUserInteractionChange(cb: (userIsInteracting: boolean) => void): () => void;
   clear(): void;
 }
 
@@ -61,10 +65,24 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
   const rawRef = useRef<[number, number][]>([]);
   const jumpedToFirstRef = useRef(false);
 
+  // "User is manually panning / pinching / rotating" flag. When true we stop
+  // auto-following the vehicle so their gesture doesn't get yanked back on
+  // every fused_result. Google Maps navigation UX.
+  const userInteractingRef = useRef(false);
+  const interactionListenersRef = useRef<Set<(v: boolean) => void>>(new Set());
+  const suppressUserInteractionRef = useRef(0);   // ignore camera moves we ourselves triggered
+
+  const setUserInteracting = (v: boolean) => {
+    if (userInteractingRef.current === v) return;
+    userInteractingRef.current = v;
+    interactionListenersRef.current.forEach((cb) => cb(v));
+  };
+
   const maybeJumpToFirst = (lat: number, lon: number) => {
     if (jumpedToFirstRef.current || !mapRef.current) return;
     jumpedToFirstRef.current = true;
-    mapRef.current.jumpTo({ center: [lon, lat], zoom: 16 });
+    suppressUserInteractionRef.current++;
+    mapRef.current.jumpTo({ center: [lon, lat], zoom: 17 });
   };
 
   useEffect(() => {
@@ -85,8 +103,27 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
       style: STYLE_URL[initialStyle],
       center: INITIAL_CENTER,
       zoom: INITIAL_ZOOM,
+      // Google-Maps-style gestures — all on by default in Mapbox GL, but
+      // being explicit so future edits don't accidentally break them.
+      dragRotate: true,
+      touchZoomRotate: true,
+      touchPitch: true,
+      pitchWithRotate: true,
+      cooperativeGestures: false,
     });
     mapRef.current = map;
+
+    // Detect real user gestures vs. our own programmatic camera moves.
+    // Any drag/rotate/zoom via touch or mouse fires `*start` events with
+    // `originalEvent` set. Our easeTo/jumpTo calls don't set that field —
+    // that's how we distinguish "you moved the map" from "the marker did".
+    const onInteractionStart = (e: any) => {
+      if (e?.originalEvent) setUserInteracting(true);
+    };
+    map.on("dragstart", onInteractionStart);
+    map.on("rotatestart", onInteractionStart);
+    map.on("pitchstart", onInteractionStart);
+    map.on("zoomstart", onInteractionStart);
 
     // Called after every base-style change to reinstate our custom layers.
     const setupLayers = () => {
@@ -277,10 +314,19 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
     },
     followVehicle(lat, lon, headingRad) {
       if (!mapRef.current) return;
-      if (markerRef.current) {
-        markerRef.current.setLngLat([lon, lat]);
-      }
-      mapRef.current.easeTo({ center: [lon, lat], bearing: (headingRad * 180) / Math.PI, duration: 300 });
+      // Marker always follows the vehicle, even during user interaction —
+      // that just means "here's where you are" not "here's where the camera is".
+      markerRef.current?.setLngLat([lon, lat]);
+      // Camera only auto-pans/rotates when the user isn't manually gesturing.
+      if (userInteractingRef.current) return;
+      suppressUserInteractionRef.current++;
+      mapRef.current.easeTo({
+        center: [lon, lat],
+        bearing: (headingRad * 180) / Math.PI,
+        pitch: 55,               // slight tilt like Google Maps nav mode
+        duration: 400,
+        essential: true,
+      });
     },
     setMatchedPath(points) {
       if (!mapRef.current) return;
@@ -307,6 +353,15 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
     setStyle(style) {
       if (!mapRef.current) return;
       mapRef.current.setStyle(STYLE_URL[style]);
+    },
+    recenter() {
+      setUserInteracting(false);
+    },
+    onUserInteractionChange(cb) {
+      interactionListenersRef.current.add(cb);
+      return () => {
+        interactionListenersRef.current.delete(cb);
+      };
     },
     setDestinationMarker(coord) {
       if (!mapRef.current) return;
