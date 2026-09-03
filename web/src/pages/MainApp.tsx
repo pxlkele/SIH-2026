@@ -2,12 +2,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, Navigation, Search } from "lucide-react";
 import MapView, { type MapViewHandle } from "../map/MapView";
 import { MapStyleToggle } from "../map/MapStyleToggle";
-import { useFusionStream } from "../data/useFusionStream";
+import { useFusionStream, type SourceMode } from "../data/useFusionStream";
+import { SourcePicker } from "../data/SourcePicker";
+import { OfflineCacheButton } from "../data/OfflineCacheButton";
+import type { LiveStreamStatus } from "../data/liveSensorStream";
 import { useNavigation } from "../nav/useNavigation";
 import { NavSearch } from "../nav/NavSearch";
 import { NavDirectionsPanel } from "../nav/NavDirectionsPanel";
 import { Wordmark } from "../components/Logo";
 import { Button, LinkButton, Panel, Pill } from "../components/ui";
+
+const BACKEND_CONFIGURED = Boolean(import.meta.env.VITE_BACKEND_URL);
 
 /**
  * `/app` — the product view. Single fused path + follow-vehicle camera +
@@ -22,9 +27,13 @@ import { Button, LinkButton, Panel, Pill } from "../components/ui";
 export default function MainApp() {
   const mapRef = useRef<MapViewHandle>(null);
   const [showSearch, setShowSearch] = useState(false);
+  const [sourceMode, setSourceMode] = useState<SourceMode>("replay");
+  const [liveStatus, setLiveStatus] = useState<LiveStreamStatus>({ kind: "idle" });
 
   const { latestFused, isDRActive } = useFusionStream({
+    mode: sourceMode,
     onFusedResult: (r) => mapRef.current?.pushFusedPoint(r),
+    onLiveStatus: setLiveStatus,
   });
 
   const currentPos = useMemo(
@@ -82,7 +91,15 @@ export default function MainApp() {
         <div className="pointer-events-auto hidden rounded-md border border-ink-700 bg-ink-900/80 px-3 py-1.5 backdrop-blur sm:block">
           <Wordmark />
         </div>
-        <div className="pointer-events-auto flex items-center gap-2">
+        <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-2">
+          <SourcePicker
+            mode={sourceMode}
+            onChange={(m) => {
+              mapRef.current?.clear();
+              setSourceMode(m);
+            }}
+            backendConfigured={BACKEND_CONFIGURED}
+          />
           <MapStyleToggle onChange={(s) => mapRef.current?.setStyle(s)} />
           {isDRActive ? (
             <Pill tone="warn" dot>
@@ -96,6 +113,21 @@ export default function MainApp() {
           )}
         </div>
       </header>
+
+      {sourceMode === "live" && liveStatus.kind === "error" && (
+        <div className="pointer-events-none absolute inset-x-0 top-16 z-10 flex justify-center px-3">
+          <div className="pointer-events-auto rounded-md border border-status-alert/60 bg-status-alert/10 px-3 py-2 text-xs text-status-alert">
+            {liveStatus.message}
+          </div>
+        </div>
+      )}
+      {sourceMode === "live" && liveStatus.kind === "running" && (
+        <div className="pointer-events-none absolute inset-x-0 top-16 z-10 flex justify-center px-3">
+          <Pill tone="ok" dot className="pointer-events-auto">
+            Live · {liveStatus.imuHz} Hz IMU · {liveStatus.gpsFixes} GPS fixes
+          </Pill>
+        </div>
+      )}
 
       {/* Search overlay */}
       {showSearch && (
@@ -169,6 +201,10 @@ export default function MainApp() {
             {nav.error}
           </div>
         )}
+
+        <div className="pointer-events-auto self-center sm:self-start">
+          <OfflineCacheButton />
+        </div>
       </div>
     </div>
   );
