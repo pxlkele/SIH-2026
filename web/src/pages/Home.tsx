@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { Wordmark } from "../components/Logo";
+import { RouteMapPreview } from "../components/RouteMapPreview";
 
 /**
  * Home page — landing at `/` after the loader fades out.
@@ -134,6 +135,13 @@ function RecentDriveCard() {
         <Stat icon={<Ruler size={12} />} label="Distance" value={`${drive.distanceKm} km`} />
         <Stat icon={<Clock size={12} />} label="Duration" value={`${drive.durationMin} min`} />
         <Stat icon={<Navigation size={12} />} label="Mean drift" value={`${drive.driftM} m`} />
+      </div>
+
+      {/* Strava-style static route preview — real drive geometry from
+          public/data/drive_corrected.csv, encoded as a polyline overlay
+          on Mapbox Static Images API. */}
+      <div className="mt-3">
+        <RouteMapPreview csvUrl="/data/drive_corrected.csv" />
       </div>
     </div>
   );
