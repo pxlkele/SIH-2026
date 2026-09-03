@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import type { FusedResult, MatchedPathPoint } from "./types";
-import { startMockStream } from "./mockStream";
+import { startDriveReplay } from "./driveReplay";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL as string | undefined;
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === "1" || !BACKEND_URL;
@@ -42,7 +42,7 @@ export function useFusionStream({ onFusedResult, onMatchedPath }: Options = {}) 
     };
 
     if (USE_MOCK) {
-      const stop = startMockStream({ onFusedResult: handle });
+      const stop = startDriveReplay({ onFusedResult: handle });
       return () => stop();
     }
 

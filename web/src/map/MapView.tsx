@@ -5,7 +5,7 @@ import type { FusedResult } from "../data/types";
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
 
 /** Layers we know how to render. */
-export type LayerId = "corrected" | "smoothed" | "matched" | "raw" | "ellipse";
+export type LayerId = "corrected" | "smoothed" | "matched" | "raw" | "ellipse" | "route";
 
 export interface MapViewHandle {
   pushFusedPoint(r: FusedResult): void;
@@ -13,6 +13,8 @@ export interface MapViewHandle {
   followVehicle(lat: number, lon: number, headingRad: number): void;
   setMatchedPath(points: { lat: number; lon: number }[]): void;
   setSmoothedPath(points: { lat: number; lon: number }[]): void;
+  setRoute(geometry: [number, number][] | null): void;
+  setDestinationMarker(coord: [number, number] | null): void;
   clear(): void;
 }
 
@@ -31,6 +33,7 @@ const PATH_STYLE: Record<LayerId, { color: string; width: number }> = {
   matched:   { color: "#10b981", width: 6 },
   raw:       { color: "#ef4444", width: 0 },     // rendered as points, not a line
   ellipse:   { color: "#3b82f6", width: 0 },
+  route:     { color: "#f59e0b", width: 6 },     // amber — clearly distinct from fused paths
 };
 
 const MapView = forwardRef<MapViewHandle, Props>(function MapView(
@@ -40,10 +43,18 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
+  const destMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const correctedRef = useRef<[number, number][]>([]);   // [lon, lat]
   const smoothedRef = useRef<[number, number][]>([]);
   const matchedRef = useRef<[number, number][]>([]);
   const rawRef = useRef<[number, number][]>([]);
+  const jumpedToFirstRef = useRef(false);
+
+  const maybeJumpToFirst = (lat: number, lon: number) => {
+    if (jumpedToFirstRef.current || !mapRef.current) return;
+    jumpedToFirstRef.current = true;
+    mapRef.current.jumpTo({ center: [lon, lat], zoom: 16 });
+  };
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -67,6 +78,37 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
     mapRef.current = map;
 
     map.on("load", () => {
+      // Route layer (nav): drawn *underneath* corrected so the fused line
+      // sits on top and reads as "where we actually are" vs "where we planned".
+      if (showLayers.includes("route")) {
+        map.addSource("route", {
+          type: "geojson",
+          data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [] } },
+        });
+        map.addLayer({
+          id: "route-halo",
+          type: "line",
+          source: "route",
+          layout: { "line-join": "round", "line-cap": "round" },
+          paint: {
+            "line-color": PATH_STYLE.route.color,
+            "line-width": PATH_STYLE.route.width + 4,
+            "line-opacity": 0.25,
+          },
+        });
+        map.addLayer({
+          id: "route",
+          type: "line",
+          source: "route",
+          layout: { "line-join": "round", "line-cap": "round" },
+          paint: {
+            "line-color": PATH_STYLE.route.color,
+            "line-width": PATH_STYLE.route.width,
+            "line-opacity": 0.9,
+          },
+        });
+      }
+
       // Path layers as GeoJSON sources — updates via setData(), no re-render.
       for (const id of ["corrected", "smoothed", "matched"] as const) {
         if (!showLayers.includes(id)) continue;
@@ -166,6 +208,7 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
   useImperativeHandle(ref, () => ({
     pushFusedPoint(r) {
       if (!mapRef.current || r.lat == null || r.lon == null) return;
+      maybeJumpToFirst(r.lat, r.lon);
       correctedRef.current.push([r.lon, r.lat]);
       const src = mapRef.current.getSource("corrected") as mapboxgl.GeoJSONSource | undefined;
       if (src) src.setData({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: correctedRef.current } });
@@ -178,6 +221,7 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
     },
     pushRawGpsPoint(lat, lon) {
       if (!mapRef.current) return;
+      maybeJumpToFirst(lat, lon);
       rawRef.current.push([lon, lat]);
       const src = mapRef.current.getSource("raw") as mapboxgl.GeoJSONSource | undefined;
       if (!src) return;
@@ -207,6 +251,39 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
       smoothedRef.current = points.map((p) => [p.lon, p.lat]);
       const src = mapRef.current.getSource("smoothed") as mapboxgl.GeoJSONSource | undefined;
       if (src) src.setData({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: smoothedRef.current } });
+    },
+    setRoute(geometry) {
+      if (!mapRef.current) return;
+      const src = mapRef.current.getSource("route") as mapboxgl.GeoJSONSource | undefined;
+      if (!src) return;
+      src.setData({
+        type: "Feature",
+        properties: {},
+        geometry: { type: "LineString", coordinates: geometry ?? [] },
+      });
+    },
+    setDestinationMarker(coord) {
+      if (!mapRef.current) return;
+      if (coord == null) {
+        destMarkerRef.current?.remove();
+        destMarkerRef.current = null;
+        return;
+      }
+      if (!destMarkerRef.current) {
+        const el = document.createElement("div");
+        el.style.width = "18px";
+        el.style.height = "18px";
+        el.style.borderRadius = "50% 50% 50% 0";
+        el.style.transform = "rotate(-45deg)";
+        el.style.background = "#f59e0b";
+        el.style.border = "2px solid #fff";
+        el.style.boxShadow = "0 2px 8px rgba(245,158,11,0.5)";
+        destMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: "bottom" })
+          .setLngLat(coord)
+          .addTo(mapRef.current);
+      } else {
+        destMarkerRef.current.setLngLat(coord);
+      }
     },
     clear() {
       correctedRef.current = [];

@@ -1,11 +1,12 @@
 # Palak — To-Do
 
-**Role:** Team lead · **frontend co-owner (`web/`)** · inference-serving API · tuning · pitch narrative · **final go/no-go on demo day**
+**Role:** Team lead · **app owner (`web/app` + `web/demo`)** · inference-serving API · tuning · pitch narrative · **final go/no-go on demo day**
 
 > Kalman filter *implementation* sits with Angad (see `todos/angad.md`).
-> Frontend is now co-owned with Charvi (2026-09-03) — Palak building the
-> infrastructure + Tier 1 feature wiring; Charvi doing visual polish, design,
-> and awwwards-style feel on top. See `todos/charvi.md` for her side of the split.
+> App vs website split (locked 2026-09-03): **Palak** owns the interactive
+> product surface — `/app` (map + turn-by-turn nav) and `/demo` (split-screen
+> pitch showcase). **Charvi** owns the marketing / landing site (`/`) plus any
+> visual polish on top of the app. See `todos/charvi.md` for her side.
 
 ## Tuning on real data
 - [x] Adapter for real device logs → schema-conformant CSV — `model/adapters/ios_sensorlog.py`. **Uses iOS Core Motion (gravity-removed accel, bias-compensated gyro)** — raw sensors caused ~70 m drift on real data because gravity leaks into horizontal axes when the phone tilts.
@@ -65,24 +66,42 @@ Practical wrinkle: **our current demo architecture streams sensor data over the 
 - [ ] Handshake with Angad on the model API surface — he still needs to confirm he's OK with the current filter or take it over
 - [x] End-to-end integration test with Charvi's frontend — no longer blocked, I own the frontend infrastructure now so this happens as a natural side-effect of building `web/`
 
-## Frontend build (co-owned with Charvi — I'm on infrastructure)
-Stack: **Vite + React + shadcn/ui + Tailwind + Mapbox GL JS + Socket.io client**, deployed to Vercel. Lives at `web/`.
+## App build (mine — `/app` and `/demo` only)
+Stack: **Vite + React + Tailwind + Mapbox GL JS + Socket.io client**, deployed to Vercel. Lives at `web/`.
 
-### Infrastructure (mine)
-- [ ] Scaffold Vite + React + Tailwind + shadcn CLI
-- [ ] Router: `/` (main app) and `/demo` (pitch showcase)
-- [ ] Mapbox GL map component — reusable, accepts layer configs, imperative updates (no React re-render on 30-50 Hz socket events)
-- [ ] Socket.io client — reconnect handling, subscription helpers for `fused_result` / `matched_path` / `sample_rejected`
-- [ ] Env config: `VITE_BACKEND_URL`, `VITE_MAPBOX_TOKEN`
-- [ ] Mock-data mode: replay a saved `fused_result` stream locally so we can build UI without Aleena's server running
-- [ ] Deploy skeleton to Vercel
+> **Scope correction (2026-09-03):** the **marketing/landing site** (i.e. `/`)
+> is **Charvi's** — I don't build it. My territory is the interactive product
+> surface only: `/app` (the map + nav) and `/demo` (the split-screen pitch
+> showcase). For now, `/` redirects to `/app` as a placeholder until Charvi's
+> landing lands.
 
-### Feature wiring (mine, on top of the infrastructure)
-- [ ] Main-app `/` — single fused path, marker with heading, confidence ellipse, DR-active badge, follow-vehicle camera
-- [ ] `/demo` — split-screen raw vs Kalman, DR ON/OFF toggle, road-snapped layer, live drift HUD, RTS-smoothed playback
+### Infrastructure (done)
+- [x] Vite + React + TS + Tailwind scaffold at `web/`
+- [x] Router (`/app`, `/demo`, `/` → `/app` redirect placeholder)
+- [x] Mapbox GL map component — imperative updates, no React re-render on 30-50 Hz socket events
+- [x] Socket.io client with mock-mode fallback
+- [x] Real-drive replay stream (loads `data/real/output/sep02a/*.csv`, plays back with a fake outage window for the demo)
+- [x] Env config: `VITE_BACKEND_URL`, `VITE_MAPBOX_TOKEN`, `VITE_USE_MOCK`
+- [ ] Deploy `web/` to Vercel
 
-### Design + polish (Charvi's half)
-Once the infrastructure is standing, Charvi takes over visual design — colors, typography, animations, layout, the awwwards-style feel. See `todos/charvi.md`.
+### `/app` — product view
+- [x] Single fused path, follow-vehicle camera, uncertainty ellipse
+- [x] DR-active vs GPS-lock pill
+- [x] **Turn-by-turn navigation** (Mapbox Directions API): search bar, route line, directions panel with current + next step, remaining distance + ETA, auto-advance
+- [x] Accuracy + heading strip at bottom
+
+### `/demo` — pitch showcase
+- [x] Split-screen raw vs Kalman, synchronised cameras, panel labels
+- [x] GPS-lost centre pill during outage window
+- [x] Live drift HUD (uncertainty / GPS-lost timer / Δ from raw), threshold-coloured
+- [x] Mobile-responsive (stacks vertically on narrow screens)
+- [ ] Consume Aleena's `matched_path` event → third layer on the fused side
+- [ ] Post-run RTS smoothed layer (needs Aleena's `/session/:id/smoothed` endpoint)
+
+### Charvi's lane (separate)
+- Marketing / landing site (`/`) — hers to design + ship
+- Visual polish pass across `/app` + `/demo` if she wants to (I'll happily hand off styling)
+- See `todos/charvi.md`.
 
 ## Tier 1 winner-tier features (I scoped these — coordinate the rollout)
 - [ ] Kick off the four Tier 1 features with Charvi + Aleena (specs are in their todo files)

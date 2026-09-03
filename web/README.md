@@ -1,9 +1,12 @@
 # SIH26168 · Frontend (`web/`)
 
-React app for the Intelligent Dead Reckoning demo. Consumes Aleena's
+React app for the Intelligent Dead Reckoning project. Consumes Aleena's
 Socket.io backend, renders live GPS + Kalman-fused paths on a Mapbox GL
-map. Co-owned by Palak (infrastructure + Tier 1 wiring) and Charvi
-(design + polish).
+map, plus turn-by-turn navigation.
+
+**Ownership split (2026-09-03):**
+- **`/app` and `/demo`** — Palak. Interactive product + pitch showcase.
+- **`/` (marketing/landing)** — Charvi. Currently a redirect to `/app` as a placeholder until her landing lands.
 
 ## Stack
 - **Vite + React + TypeScript** (fast HMR, one-command deploys to Vercel)
@@ -29,28 +32,39 @@ VITE_BACKEND_URL=http://localhost:3000
 ```
 
 ## Routes
-- **`/`** — landing page, two CTAs
-- **`/app`** — the product view. Single fused path, marker, confidence ellipse, DR-active badge.
-- **`/demo`** — the pitch showcase. Split-screen raw-GPS vs Kalman-fused, synchronised cameras, GPS-lost centre pill, drift-counter HUD.
+- **`/`** — redirects to `/app` for now. Reserved for Charvi's landing.
+- **`/app`** — the product view. Single fused path, follow-vehicle camera, confidence ellipse, DR-active badge, **turn-by-turn navigation** (Mapbox Directions).
+- **`/demo`** — the pitch showcase. Split-screen raw-GPS vs Kalman-fused, synchronised cameras, GPS-lost centre pill, drift-counter HUD. Uses real drive data from `data/real/output/sep02a/*.csv`.
 
 ## Layout
 
 ```
 web/
+├── public/
+│   ├── data/                # drive_corrected.csv + drive_raw_gps.csv
+│   │                        # (real 3.2 km drive, replayed in /demo)
+│   └── favicon.svg
 ├── src/
 │   ├── App.tsx              # router
 │   ├── main.tsx             # entry
 │   ├── index.css            # tailwind + mapbox css
 │   ├── pages/
-│   │   ├── Landing.tsx      # /
-│   │   ├── MainApp.tsx      # /app  — product view
-│   │   └── DemoView.tsx     # /demo — pitch showcase
+│   │   ├── MainApp.tsx      # /app  — product view + turn-by-turn
+│   │   └── DemoView.tsx     # /demo — pitch showcase (split-screen)
 │   ├── map/
-│   │   └── MapView.tsx      # Mapbox GL wrapper. imperative API, no re-render.
-│   └── data/
-│       ├── types.ts         # FusedResult + MatchedPathPoint wire types
-│       ├── useFusionStream.ts   # socket.io client hook
-│       └── mockStream.ts    # local mock (built-in dev mode)
+│   │   └── MapView.tsx      # Mapbox GL wrapper — imperative API, no re-render on socket events
+│   ├── nav/
+│   │   ├── mapboxApi.ts     # Mapbox Geocoding + Directions wrappers
+│   │   ├── useNavigation.ts # route state + step-advance hook
+│   │   ├── NavSearch.tsx    # destination search input
+│   │   └── NavDirectionsPanel.tsx  # turn-by-turn overlay
+│   ├── data/
+│   │   ├── types.ts         # FusedResult + MatchedPathPoint wire types
+│   │   ├── useFusionStream.ts   # socket.io client hook (with mock fallback)
+│   │   └── driveReplay.ts   # loads /data/*.csv and replays with fake outage
+│   └── components/
+│       ├── Logo.tsx         # Beacon wordmark + radar mark
+│       └── ui.tsx           # Button, LinkButton, Panel, Pill, Eyebrow
 ├── tailwind.config.js
 ├── .env.example
 └── package.json
@@ -61,5 +75,8 @@ Documented in `../model/README.md :: Inference API`. Two events matter:
 - `fused_result` — every sample. See `src/data/types.ts :: FusedResult`.
 - `matched_path` — batched (~every 5s), road-snapped geometry from OSRM.
 
-## Design + polish is Charvi's lane
-The infrastructure this file describes is functional-but-plain. Colors, typography, animations, landing-page treatment, dark mode, deploy polish — all Charvi. See `../todos/charvi.md`.
+## Landing (`/`) is Charvi's lane
+Currently `/` redirects to `/app` as a placeholder. Charvi replaces that
+with the marketing landing site — either in this repo (`src/pages/Landing.tsx`
++ update `App.tsx` routing) or as a separate Vercel deploy that links to
+this app's `/app` and `/demo` URLs. See `../todos/charvi.md`.

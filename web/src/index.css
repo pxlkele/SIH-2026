@@ -1,17 +1,44 @@
+@import "mapbox-gl/dist/mapbox-gl.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@import "mapbox-gl/dist/mapbox-gl.css";
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    background: #07090d;
+    color: #e5e7ed;
+    font-family: Inter, system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "cv11", "ss03", "cv02";
+  }
 
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  background: #0b0e13;
-  color: #e5e7eb;
-  font-family: Inter, system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
+  /* Tabular numerals wherever data is displayed */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Fine dot grid backdrop used on marketing surfaces */
+  .bg-dot-grid {
+    background-image: radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+}
+
+/* Mapbox baseline overrides so its default UI stops fighting the dark theme */
+.mapboxgl-ctrl-attrib {
+  background: rgba(11, 14, 19, 0.6) !important;
+  color: #8b91a0 !important;
+  font-size: 10px !important;
+}
+
+.mapboxgl-ctrl-attrib a {
+  color: #c4c8d1 !important;
 }
