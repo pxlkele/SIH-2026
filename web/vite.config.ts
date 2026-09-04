@@ -37,7 +37,7 @@ export default defineConfig({
         // Cache large map tiles + drive replay CSVs so the app boots offline.
         // Mapbox tiles are runtime-cached (network-first, fall back to cache).
         globPatterns: ["**/*.{js,css,html,svg,png,ico,csv,woff2,json}"],
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,   // 5 MB per file cap
+        maximumFileSizeToCacheInBytes: 12 * 1024 * 1024,  // 12 MB per file — accommodates the 12 km real drive corrected CSV (~7 MB)
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/api\.mapbox\.com\/.*/i,
