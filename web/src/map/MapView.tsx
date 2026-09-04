@@ -152,97 +152,119 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
     map.on("zoomstart", onInteractionStart);
 
     // Called after every base-style change to reinstate our custom layers.
+    // Idempotent — safe to call multiple times without addSource / addLayer
+    // throwing "already exists" errors (which would abort setup mid-way).
     const setupLayers = () => {
       // Route layer (nav): drawn *underneath* corrected so the fused line
       // sits on top and reads as "where we actually are" vs "where we planned".
       if (showLayers.includes("route")) {
-        map.addSource("route", {
-          type: "geojson",
-          data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [] } },
-        });
-        map.addLayer({
-          id: "route-halo",
-          type: "line",
-          source: "route",
-          layout: { "line-join": "round", "line-cap": "round" },
-          paint: {
-            "line-color": PATH_STYLE.route.color,
-            "line-width": PATH_STYLE.route.width + 4,
-            "line-opacity": 0.25,
-          },
-        });
-        map.addLayer({
-          id: "route",
-          type: "line",
-          source: "route",
-          layout: { "line-join": "round", "line-cap": "round" },
-          paint: {
-            "line-color": PATH_STYLE.route.color,
-            "line-width": PATH_STYLE.route.width,
-            "line-opacity": 0.9,
-          },
-        });
+        if (!map.getSource("route")) {
+          map.addSource("route", {
+            type: "geojson",
+            data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [] } },
+          });
+        }
+        if (!map.getLayer("route-halo")) {
+          map.addLayer({
+            id: "route-halo",
+            type: "line",
+            source: "route",
+            layout: { "line-join": "round", "line-cap": "round" },
+            paint: {
+              "line-color": PATH_STYLE.route.color,
+              "line-width": PATH_STYLE.route.width + 4,
+              "line-opacity": 0.25,
+            },
+          });
+        }
+        if (!map.getLayer("route")) {
+          map.addLayer({
+            id: "route",
+            type: "line",
+            source: "route",
+            layout: { "line-join": "round", "line-cap": "round" },
+            paint: {
+              "line-color": PATH_STYLE.route.color,
+              "line-width": PATH_STYLE.route.width,
+              "line-opacity": 0.9,
+            },
+          });
+        }
       }
 
       // Path layers as GeoJSON sources — updates via setData(), no re-render.
       for (const id of ["corrected", "smoothed", "matched"] as const) {
         if (!showLayers.includes(id)) continue;
-        map.addSource(id, {
-          type: "geojson",
-          data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [] } },
-        });
-        map.addLayer({
-          id,
-          type: "line",
-          source: id,
-          layout: { "line-join": "round", "line-cap": "round" },
-          paint: {
-            "line-color": PATH_STYLE[id].color,
-            "line-width": PATH_STYLE[id].width,
-            "line-opacity": 0.9,
-          },
-        });
+        if (!map.getSource(id)) {
+          map.addSource(id, {
+            type: "geojson",
+            data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [] } },
+          });
+        }
+        if (!map.getLayer(id)) {
+          map.addLayer({
+            id,
+            type: "line",
+            source: id,
+            layout: { "line-join": "round", "line-cap": "round" },
+            paint: {
+              "line-color": PATH_STYLE[id].color,
+              "line-width": PATH_STYLE[id].width,
+              "line-opacity": 0.9,
+            },
+          });
+        }
       }
 
       if (showLayers.includes("raw")) {
-        map.addSource("raw", {
-          type: "geojson",
-          data: { type: "FeatureCollection", features: [] },
-        });
-        map.addLayer({
-          id: "raw",
-          type: "circle",
-          source: "raw",
-          paint: {
-            "circle-radius": 5,
-            "circle-color": PATH_STYLE.raw.color,
-            "circle-stroke-color": "#fff",
-            "circle-stroke-width": 1,
-            "circle-opacity": 0.85,
-          },
-        });
+        if (!map.getSource("raw")) {
+          map.addSource("raw", {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          });
+        }
+        if (!map.getLayer("raw")) {
+          map.addLayer({
+            id: "raw",
+            type: "circle",
+            source: "raw",
+            paint: {
+              "circle-radius": 5,
+              "circle-color": PATH_STYLE.raw.color,
+              "circle-stroke-color": "#fff",
+              "circle-stroke-width": 1,
+              "circle-opacity": 0.85,
+            },
+          });
+        }
       }
 
       if (showLayers.includes("ellipse")) {
-        map.addSource("ellipse", {
-          type: "geojson",
-          data: { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [[]] } },
-        });
-        map.addLayer({
-          id: "ellipse",
-          type: "fill",
-          source: "ellipse",
-          paint: {
-            "fill-color": PATH_STYLE.ellipse.color,
-            "fill-opacity": 0.15,
-          },
-        });
-        map.addLayer({
-          id: "ellipse-outline",
-          type: "line",
-          source: "ellipse",
-          paint: { "line-color": PATH_STYLE.ellipse.color, "line-width": 1, "line-opacity": 0.6 },
-        });
+        if (!map.getSource("ellipse")) {
+          map.addSource("ellipse", {
+            type: "geojson",
+            data: { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [[]] } },
+          });
+        }
+        if (!map.getLayer("ellipse")) {
+          map.addLayer({
+            id: "ellipse",
+            type: "fill",
+            source: "ellipse",
+            paint: {
+              "fill-color": PATH_STYLE.ellipse.color,
+              "fill-opacity": 0.15,
+            },
+          });
+        }
+        if (!map.getLayer("ellipse-outline")) {
+          map.addLayer({
+            id: "ellipse-outline",
+            type: "line",
+            source: "ellipse",
+            paint: { "line-color": PATH_STYLE.ellipse.color, "line-width": 1, "line-opacity": 0.6 },
+          });
+        }
       }
 
       if (!markerRef.current) {
@@ -436,7 +458,11 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
     },
     setStyle(style) {
       if (!mapRef.current) return;
-      mapRef.current.setStyle(STYLE_URL[style]);
+      // diff:false forces a full style reload — Mapbox drops every custom
+      // source/layer (route, corrected, ellipse, raw). style.load then
+      // fires and setupLayers re-adds them, replaying routeRef +
+      // destMarkerCoordRef so nothing disappears mid-navigation.
+      mapRef.current.setStyle(STYLE_URL[style], { diff: false });
     },
     getCenter() {
       if (!mapRef.current) return null;

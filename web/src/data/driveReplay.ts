@@ -41,13 +41,14 @@ interface RawRow {
 }
 
 // Where the biggest real GPS gap in web/public/data/drive_raw_gps.csv sits.
-// 6-second dropout at t=1369s. Starting 3s earlier gives the demo viewer
-// enough context to see normal tracking → gap → dead-reckoning kicking in.
-const DEFAULT_START_S = 1366;
-// Playback slows down inside this trip-time window so a 6s real GPS gap
-// (t=1369s..1375s) takes ~18 real seconds to play — recordable + dramatic.
-const SLOW_WINDOW_START_S = 1367.5;   // just before the gap
-const SLOW_WINDOW_END_S = 1377;       // a couple seconds after recovery
+// 6-second dropout from t=1368s to t=1374s. We start ~10 s earlier
+// (~100 m at driving speed) so the viewer sees clean tracking *before*
+// the gap, not a hard cut into the interesting moment.
+const DEFAULT_START_S = 1358;
+// Slow window brackets the actual gap plus a beat on either side so
+// the transition into and out of dead-reckoning is legible.
+const SLOW_WINDOW_START_S = 1367;
+const SLOW_WINDOW_END_S = 1375;
 const NORMAL_SPEED = 2;                // 2× speed outside the gap window
 const SLOW_SPEED = 0.33;               // ~3× real-time slower during the gap
 
