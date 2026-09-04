@@ -85,11 +85,6 @@ export default function MainApp() {
     }
   }, [latestFused]);
 
-  useEffect(() => {
-    mapRef.current?.setRoute(nav.route ? nav.route.geometry : null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // wired properly below via a ref, this useEffect is only for cleanup
-
   // Position handed to the nav module — fused wins if we have it, else raw.
   const currentPos = useMemo(() => {
     if (latestFused?.lat != null && latestFused?.lon != null) {

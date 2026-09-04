@@ -80,6 +80,11 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
   const smoothedRef = useRef<[number, number][]>([]);
   const matchedRef = useRef<[number, number][]>([]);
   const rawRef = useRef<[number, number][]>([]);
+  // Latest route geometry, kept so we can replay it after `map.on("load")`
+  // finishes (setRoute may be called before the route source is added) and
+  // after every style change (Mapbox wipes custom sources).
+  const routeRef = useRef<[number, number][] | null>(null);
+  const destMarkerCoordRef = useRef<[number, number] | null>(null);
   const jumpedToFirstRef = useRef(false);
 
   // "User is manually panning / pinching / rotating" flag. When true we stop
@@ -297,7 +302,9 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
           .addTo(map);
       }
 
-      // Repaint any accumulated data (e.g. after a style change)
+      // Repaint any accumulated data (e.g. after a style change, or if
+      // setRoute / setDestinationMarker fired before the map's initial
+      // 'load' event finished setting up sources).
       if (correctedRef.current.length > 0) {
         const src = map.getSource("corrected") as mapboxgl.GeoJSONSource | undefined;
         src?.setData({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: correctedRef.current } });
@@ -310,6 +317,26 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
             type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [lo, la] },
           })),
         });
+      }
+      if (routeRef.current && routeRef.current.length > 0) {
+        const src = map.getSource("route") as mapboxgl.GeoJSONSource | undefined;
+        src?.setData({
+          type: "Feature", properties: {},
+          geometry: { type: "LineString", coordinates: routeRef.current },
+        });
+      }
+      if (destMarkerCoordRef.current && !destMarkerRef.current) {
+        const el = document.createElement("div");
+        el.style.width = "18px";
+        el.style.height = "18px";
+        el.style.borderRadius = "50% 50% 50% 0";
+        el.style.transform = "rotate(-45deg)";
+        el.style.background = "#f59e0b";
+        el.style.border = "2px solid #fff";
+        el.style.boxShadow = "0 2px 8px rgba(245,158,11,0.5)";
+        destMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: "bottom" })
+          .setLngLat(destMarkerCoordRef.current)
+          .addTo(map);
       }
     };
 
@@ -434,6 +461,10 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
       if (src) src.setData({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: smoothedRef.current } });
     },
     setRoute(geometry) {
+      // Save even if the map / source isn't ready yet — setupLayers will
+      // replay from routeRef once the sources exist. This fixes the
+      // "route planned but line not drawn" race on first navigation.
+      routeRef.current = geometry;
       if (!mapRef.current) return;
       const src = mapRef.current.getSource("route") as mapboxgl.GeoJSONSource | undefined;
       if (!src) return;
@@ -477,6 +508,7 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
       };
     },
     setDestinationMarker(coord) {
+      destMarkerCoordRef.current = coord;
       if (!mapRef.current) return;
       if (coord == null) {
         destMarkerRef.current?.remove();
