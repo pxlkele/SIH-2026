@@ -142,15 +142,52 @@ export default function MainApp() {
     requestFreshFix();
   };
 
-  // When a fresh fix comes in, always snap the map to it — that's what the
-  // user just asked for.
+  // Raw-fix camera driver. When we're actively navigating, we want the
+  // 3D heading-up view even without an IMU stream (i.e. on any phone that
+  // hasn't granted motion permission, or on desktop). We derive the
+  // bearing from consecutive raw fixes when the device doesn't report a
+  // GPS-derived heading directly.
   const lastFixTimestampRef = useRef<number | null>(null);
+  const lastFixPosRef = useRef<{ lat: number; lon: number } | null>(null);
   useEffect(() => {
-    if (rawFix && rawFix.timestamp !== lastFixTimestampRef.current) {
-      lastFixTimestampRef.current = rawFix.timestamp;
+    if (!rawFix || rawFix.timestamp === lastFixTimestampRef.current) return;
+    lastFixTimestampRef.current = rawFix.timestamp;
+
+    const isNavigating = nav.destination != null;
+    if (isNavigating) {
+      // Prefer device-reported GPS heading (accurate above ~1 m/s). Fall
+      // back to bearing between the previous fix and this one so the
+      // camera still rotates while stationary/slow.
+      let bearingRad: number | null =
+        rawFix.headingDeg != null ? (rawFix.headingDeg * Math.PI) / 180 : null;
+      if (bearingRad == null && lastFixPosRef.current) {
+        bearingRad = bearingBetween(
+          lastFixPosRef.current.lat,
+          lastFixPosRef.current.lon,
+          rawFix.lat,
+          rawFix.lon,
+        );
+      }
+      mapRef.current?.followVehicle(rawFix.lat, rawFix.lon, bearingRad ?? 0);
+    } else {
       mapRef.current?.panTo(rawFix.lat, rawFix.lon);
     }
-  }, [rawFix]);
+    lastFixPosRef.current = { lat: rawFix.lat, lon: rawFix.lon };
+  }, [rawFix, nav.destination]);
+
+  // The instant nav starts, kick the camera into 3D nav mode using the
+  // best position we have — no need to wait for the next GPS tick.
+  useEffect(() => {
+    if (!nav.destination) return;
+    const pos = currentPos;
+    if (!pos) return;
+    const bearingRad =
+      rawFix?.headingDeg != null
+        ? (rawFix.headingDeg * Math.PI) / 180
+        : latestFused?.heading_rad ?? 0;
+    mapRef.current?.followVehicle(pos.lat, pos.lon, bearingRad);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nav.destination]);
 
   const uncertainty =
     latestFused && latestFused.std_e_m != null && latestFused.std_n_m != null
@@ -382,4 +419,15 @@ function StatCell({ label, value }: { label: string; value: string }) {
 
 function Divider() {
   return <div className="h-3 w-px shrink-0 bg-ink-700" />;
+}
+
+/** Initial bearing from A to B, in radians in [0, 2π). */
+function bearingBetween(latA: number, lonA: number, latB: number, lonB: number): number {
+  const φ1 = (latA * Math.PI) / 180;
+  const φ2 = (latB * Math.PI) / 180;
+  const Δλ = ((lonB - lonA) * Math.PI) / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  const θ = Math.atan2(y, x);
+  return (θ + 2 * Math.PI) % (2 * Math.PI);
 }
