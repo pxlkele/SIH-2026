@@ -462,7 +462,7 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
       // source/layer (route, corrected, ellipse, raw). style.load then
       // fires and setupLayers re-adds them, replaying routeRef +
       // destMarkerCoordRef so nothing disappears mid-navigation.
-      mapRef.current.setStyle(STYLE_URL[style], { diff: false });
+      mapRef.current.setStyle(STYLE_URL[style], { diff: false } as any);
     },
     getCenter() {
       if (!mapRef.current) return null;
