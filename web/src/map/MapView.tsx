@@ -153,46 +153,6 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
 
     // Called after every base-style change to reinstate our custom layers.
     const setupLayers = () => {
-      // 3D building extrusions — gives navigation the Google Maps "flying
-      // through the city" feel when combined with the tilted camera in
-      // followVehicle. Only added on styles that carry the 'composite'
-      // vector source (streets, satellite-streets).
-      try {
-        if (map.getSource("composite") && !map.getLayer("beacon-3d-buildings")) {
-          const labelLayer = map.getStyle().layers?.find(
-            (l: any) => l.type === "symbol" && l.layout?.["text-field"],
-          );
-          map.addLayer(
-            {
-              id: "beacon-3d-buildings",
-              source: "composite",
-              "source-layer": "building",
-              filter: ["==", "extrude", "true"],
-              type: "fill-extrusion",
-              minzoom: 14,
-              paint: {
-                "fill-extrusion-color": "#3a4353",
-                "fill-extrusion-height": [
-                  "interpolate", ["linear"], ["zoom"],
-                  14, 0,
-                  15.05, ["get", "height"],
-                ],
-                "fill-extrusion-base": [
-                  "interpolate", ["linear"], ["zoom"],
-                  14, 0,
-                  15.05, ["get", "min_height"],
-                ],
-                "fill-extrusion-opacity": 0.7,
-              },
-            } as any,
-            labelLayer?.id,
-          );
-        }
-      } catch {
-        // If the style doesn't have building extrusions we just skip — the
-        // map still works fine, just without the 3D scenery.
-      }
-
       // Route layer (nav): drawn *underneath* corrected so the fused line
       // sits on top and reads as "where we actually are" vs "where we planned".
       if (showLayers.includes("route")) {
