@@ -26,6 +26,14 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN
   : '*';
 
 const app = express();
+// Railway (and most PaaS hosts) put the app behind a reverse proxy, which
+// sets X-Forwarded-For. Without telling Express to trust it, express-rate-
+// limit can't safely identify the real client IP — it either throws
+// (ERR_ERL_UNEXPECTED_X_FORWARDED_FOR) or, worse, buckets every visitor
+// under one shared identity, which would make the per-visitor rate limit
+// apply globally instead. `1` = trust exactly one hop (Railway's own edge),
+// not arbitrary client-supplied headers.
+app.set('trust proxy', 1);
 app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.text({ type: 'text/csv', limit: '25mb' }));
 
