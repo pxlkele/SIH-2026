@@ -34,7 +34,12 @@ We use a **classical linear Kalman filter** as the core fusion engine — 2D sta
 
 We validate and demo against a concrete scenario: **underground/multi-level parking and connecting tunnel navigation**. Target benchmark: keep drift under 100m over 1km of GNSS-denied driving at 60 km/h.
 
-**Current measured result** (60s synthetic scenario with a 20s GPS-loss window): **1.5 m mean position error through the outage vs. 11.9 m for a raw-GPS linear-interpolation baseline** — an ~8× improvement. Real-log tuning against Raga's captured drive is in progress.
+**Measured results:**
+- **Synthetic 60 s scenario, 20 s GPS-loss window:** 1.4 m mean position error through the outage vs. 11.9 m for a raw-GPS linear-interpolation baseline — **~8× improvement**.
+- **Real drive, 33-minute 12.3 km capture in North Bengaluru (2026-09-03):** 1.8 m mean drift vs raw GPS online, with a natural 6-second GPS gap tracked cleanly. RTS smoother tightens this to ~1.2 m.
+- **Earlier real captures (2026-09-02, ~3 km + ~5 km):** 2.3 m and 3.0 m mean drift; smoother brings both under 2.1 m.
+
+Basement-descent capture is scoped for the tunnel-scenario benchmark.
 
 ---
 
@@ -45,7 +50,8 @@ We validate and demo against a concrete scenario: **underground/multi-level park
 - **Maps:** OpenStreetMap tiles, with pre-downloaded offline coverage for GNSS-denied areas.
 
 **Hackathon demo architecture — what we're actually running for judges:**
-- **Fusion model (`model/`):** Python — NumPy + Pandas. Hand-rolled linear Kalman filter (no `filterpy`, no PyTorch — there is no learned model to train). Streaming inference via `SessionStepper` exposed over JSON-per-line stdio (`serve_stdio.py`).
+- **Fusion model (`model/`):** Python — NumPy + Pandas. Hand-rolled linear Kalman filter (no `filterpy`, no PyTorch). Streaming inference via `SessionStepper` exposed over JSON-per-line stdio (`serve_stdio.py`). **Full TypeScript port** at `web/src/kalman/` runs the same equations on-device in the browser, enabling airplane-mode operation with no server round-trip.
+- **Motion-mode classifier (`model/motion_classifier/`):** Pure-numpy multinomial logistic regression trained on our five real captures — walking / driving / stationary, six IMU features, ~91.6% overall accuracy with inverse-frequency class weights. Weights export to `web/public/motion_classifier.json`; browser inference is ~50 lines of dot-product + softmax at `web/src/motion/classifier.ts`. No ML runtime required.
 - **Backend (`server/`):** Node.js + Express + Socket.io. Spawns the Python filter as a subprocess per WebSocket connection; also accepts CSV replay via `POST /replay/:socketId` as a fallback path.
 - **Frontend:** React + shadcn/ui + Tailwind, deployed to Vercel. Renders raw GPS path vs. Kalman-corrected path on a live map (Mapbox GL JS or Leaflet + OSM).
 - **Map-matching (Tier 1, planned):** OSRM public map-matching API — snaps the corrected trajectory to real road segments.
@@ -57,8 +63,8 @@ We validate and demo against a concrete scenario: **underground/multi-level park
 
 | Role | Owner |
 |---|---|
-| Team lead · inference API · tuning · demo owner | Palak |
-| Sensor engineering (IMU/GPS instrumentation) · Kalman filter | Angad |
+| Team lead · product owner (mobile app + web) · on-device TypeScript port of the Kalman filter · motion-mode ML classifier (train + browser inference) · filter tuning on real drives · inference API · pitch narrative · demo owner | Palak |
+| Sensor engineering (IMU/GPS instrumentation) · Kalman filter design review | Angad |
 | Data collection & ground-truth | Raga |
 | Backend | Aleena |
 | Frontend / visualization | Charvi |
