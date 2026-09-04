@@ -44,10 +44,16 @@ interface RawRow {
 // 6-second dropout at t=1369s. Starting 3s earlier gives the demo viewer
 // enough context to see normal tracking → gap → dead-reckoning kicking in.
 const DEFAULT_START_S = 1366;
+// Playback slows down inside this trip-time window so a 6s real GPS gap
+// (t=1369s..1375s) takes ~18 real seconds to play — recordable + dramatic.
+const SLOW_WINDOW_START_S = 1367.5;   // just before the gap
+const SLOW_WINDOW_END_S = 1377;       // a couple seconds after recovery
+const NORMAL_SPEED = 2;                // 2× speed outside the gap window
+const SLOW_SPEED = 0.33;               // ~3× real-time slower during the gap
 
 export function startDriveReplay({
   onFusedResult,
-  speed = 1,
+  speed = NORMAL_SPEED,
   startAtTripSecs = DEFAULT_START_S,
 }: Options): () => void {
   let cancelled = false;
@@ -75,15 +81,31 @@ export function startDriveReplay({
     }
     if (idx >= corrected.length) return;
 
-    const playbackTripAnchorMs = corrected[idx].timestamp_ms;
+    // Convert the slow-window trip times to walltime. Anything before
+    // SLOW_WINDOW_START plays at `speed`; inside the window at SLOW_SPEED;
+    // after at `speed` again. tripToWalltime is monotonic + piecewise linear.
+    const anchor = corrected[idx].timestamp_ms;
+    const slowStartMs = tripStartMs + SLOW_WINDOW_START_S * 1000;
+    const slowEndMs = tripStartMs + SLOW_WINDOW_END_S * 1000;
+
+    const tripToWalltime = (tsMs: number): number => {
+      if (tsMs <= anchor) return 0;
+      // How much trip time elapsed before the slow window?
+      const normalBefore = Math.max(0, Math.min(tsMs, slowStartMs) - anchor);
+      // How much fell inside the slow window?
+      const slowPart = Math.max(0, Math.min(tsMs, slowEndMs) - Math.max(anchor, slowStartMs));
+      // How much after?
+      const normalAfter = Math.max(0, tsMs - Math.max(slowEndMs, anchor));
+      return (normalBefore / speed) + (slowPart / SLOW_SPEED) + (normalAfter / speed);
+    };
+
     const walltimeStart = performance.now();
 
     const emit = () => {
       if (cancelled || idx >= corrected.length) return;
       const c = corrected[idx];
-      const tripElapsedMs = c.timestamp_ms - playbackTripAnchorMs;
       const walltimeElapsedMs = performance.now() - walltimeStart;
-      const targetWalltimeMs = tripElapsedMs / speed;
+      const targetWalltimeMs = tripToWalltime(c.timestamp_ms);
 
       if (walltimeElapsedMs < targetWalltimeMs) {
         handle = setTimeout(emit, targetWalltimeMs - walltimeElapsedMs);

@@ -45,10 +45,13 @@ export default function DemoView() {
       mode: sampleActive ? "replay" : "backend", // "backend" is inactive when VITE_BACKEND_URL isn't set
       onFusedResult: sampleActive
         ? (r) => {
-            rawMapRef.current && r.gps_used && r.lat != null && r.lon != null
-              ? rawMapRef.current.pushRawGpsPoint(r.lat, r.lon)
-              : null;
+            if (r.lat == null || r.lon == null) return;
+            if (r.gps_used) rawMapRef.current?.pushRawGpsPoint(r.lat, r.lon);
             fusedMapRef.current?.pushFusedPoint(r);
+            // Follow the vehicle on both panels so the drive is visible as
+            // it unfolds — no more static "here's where it ended" view.
+            fusedMapRef.current?.followVehicle(r.lat, r.lon, r.heading_rad ?? 0);
+            rawMapRef.current?.followVehicle(r.lat, r.lon, r.heading_rad ?? 0);
           }
         : undefined,
     });

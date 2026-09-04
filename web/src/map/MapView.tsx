@@ -281,21 +281,18 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Camera sync between paired maps
+  // Camera sync between paired maps — mirror the last position we
+  // followed to the sibling map. Simpler + more correct than the
+  // previous `_mapInternal` trick (which never worked because we don't
+  // expose the underlying Mapbox instance through the imperative handle).
   useEffect(() => {
-    if (!syncWith?.current || !mapRef.current) return;
-    const map = mapRef.current;
-    let syncing = false;
-    const onMove = () => {
-      if (syncing) return;
-      const other = (syncWith.current as any)?._mapInternal as mapboxgl.Map | undefined;
-      if (!other) return;
-      syncing = true;
-      other.jumpTo({ center: map.getCenter(), zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch() });
-      syncing = false;
-    };
-    map.on("move", onMove);
-    return () => { map.off("move", onMove); };
+    if (!syncWith?.current) return;
+    const iv = setInterval(() => {
+      const last = lastPosRef.current;
+      if (!last || !syncWith.current) return;
+      syncWith.current.panTo(last.lat, last.lon);
+    }, 200);
+    return () => clearInterval(iv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [syncWith]);
 
