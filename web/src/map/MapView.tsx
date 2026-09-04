@@ -51,7 +51,10 @@ interface Props {
 // This is only the *fallback* if we haven't received a real location fix
 // yet — as soon as GPS gives us anything, the map jumps to it.
 const INITIAL_CENTER: [number, number] = [77.5900, 13.1258];
-const INITIAL_ZOOM = 13;
+// 16 keeps the initial view at street-level so when GPS gives us the real
+// fix and we jump to zoom 17, it's a small correction not a dramatic
+// re-scale. Users were reading the pre-fix wide view as "wrong location".
+const INITIAL_ZOOM = 16;
 
 const PATH_STYLE: Record<LayerId, { color: string; width: number }> = {
   corrected: { color: "#3b82f6", width: 4 },
