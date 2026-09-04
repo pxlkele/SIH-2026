@@ -65,7 +65,7 @@ export function NavSearch({ near, onSelect, onClose }: Props) {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Where to?"
+          placeholder="Search any place, address, or landmark"
           className="w-full bg-transparent text-sm text-ink-100 placeholder-ink-500 focus:outline-none"
         />
         {loading && (
@@ -105,11 +105,12 @@ export function NavSearch({ near, onSelect, onClose }: Props) {
         <div className="px-3 py-3 text-xs text-ink-500">No results</div>
       )}
 
-      {/* Preset destinations — one-tap for the demo */}
+      {/* Preset destinations — one-tap for the demo. These are just
+          shortcuts; the search bar above accepts any place in India. */}
       {query.trim().length < 2 && (
         <div className="border-t border-ink-800 px-3 py-2.5">
           <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-ink-500">
-            Quick destinations
+            Demo shortcuts · or search anywhere in India above
           </div>
           <div className="flex flex-wrap gap-1.5">
             {PRESETS.map((p) => (

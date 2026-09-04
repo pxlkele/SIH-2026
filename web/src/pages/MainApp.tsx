@@ -9,6 +9,7 @@ import type { MotionMode } from "../motion/classifier";
 import { useNavigation } from "../nav/useNavigation";
 import { NavSearch } from "../nav/NavSearch";
 import { NavDirectionsPanel } from "../nav/NavDirectionsPanel";
+import { DestinationPreview } from "../nav/DestinationPreview";
 import { Wordmark } from "../components/Logo";
 import { Button, LinkButton, Panel } from "../components/ui";
 
@@ -27,6 +28,9 @@ export default function MainApp() {
   const [showSearch, setShowSearch] = useState(false);
   const [userMovedMap, setUserMovedMap] = useState(false);
   const [motionMode, setMotionMode] = useState<MotionMode | null>(null);
+  // Selected-but-not-yet-navigating destination. Google-Maps flow: tap a
+  // place → preview card with "Directions" → confirm to actually navigate.
+  const [pendingDest, setPendingDest] = useState<{ name: string; lat: number; lon: number; presetSlug?: string } | null>(null);
 
   // Session recorder — starts when the user begins a navigation, stops
   // when they arrive/cancel. Logs 1 Hz samples locally to IndexedDB.
@@ -264,18 +268,23 @@ export default function MainApp() {
               onClose={() => setShowSearch(false)}
               onSelect={(dest) => {
                 setShowSearch(false);
-                // If we don't have a GPS fix yet, route from wherever the
-                // user is currently looking on the map. Beats silently
-                // dropping the tap.
+                // Stage as pending — user confirms via the Directions
+                // button in the preview panel. Also fly the camera to
+                // frame both the current position and the destination
+                // pin so they can see what they're picking.
+                setPendingDest(dest);
+                mapRef.current?.setDestinationMarker([dest.lon, dest.lat]);
                 const origin = currentPos ?? mapRef.current?.getCenter() ?? null;
-                nav.startNavigation(dest, origin);
+                if (origin) {
+                  mapRef.current?.fitBounds(origin, { lat: dest.lat, lon: dest.lon });
+                }
               }}
             />
           </div>
         </div>
       )}
 
-      {/* Bottom cluster: nav panel OR search button + status strip */}
+      {/* Bottom cluster: nav panel OR preview OR search button + status strip */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col items-center gap-3 p-3 sm:items-start sm:p-4">
         {nav.destination && (
           <NavDirectionsPanel
@@ -289,7 +298,26 @@ export default function MainApp() {
           />
         )}
 
-        {!nav.destination && !showSearch && (
+        {!nav.destination && pendingDest && (
+          <DestinationPreview
+            destination={pendingDest}
+            origin={currentPos}
+            loading={nav.loading}
+            onCancel={() => {
+              setPendingDest(null);
+              mapRef.current?.setDestinationMarker(null);
+              mapRef.current?.recenter();
+            }}
+            onDirections={() => {
+              const origin = currentPos ?? mapRef.current?.getCenter() ?? null;
+              const dest = pendingDest;
+              setPendingDest(null);
+              void nav.startNavigation(dest, origin);
+            }}
+          />
+        )}
+
+        {!nav.destination && !pendingDest && !showSearch && (
           <Button
             variant="primary"
             size="lg"

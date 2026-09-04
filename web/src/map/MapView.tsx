@@ -15,6 +15,9 @@ export interface MapViewHandle {
    *  Used when raw geolocation gives us a fix independently of the fused
    *  stream — no heading, so we can't align the map bearing. */
   panTo(lat: number, lon: number): void;
+  /** Fit both points into the current viewport, with a friendly zoom/pitch
+   *  reset so the user can preview "this is where you're going". */
+  fitBounds(a: { lat: number; lon: number }, b: { lat: number; lon: number }): void;
   /** Return the current map center — used as a fallback origin for routing
    *  when neither raw nor fused GPS has produced a fix yet. */
   getCenter(): { lat: number; lon: number } | null;
@@ -145,6 +148,46 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
 
     // Called after every base-style change to reinstate our custom layers.
     const setupLayers = () => {
+      // 3D building extrusions — gives navigation the Google Maps "flying
+      // through the city" feel when combined with the tilted camera in
+      // followVehicle. Only added on styles that carry the 'composite'
+      // vector source (streets, satellite-streets).
+      try {
+        if (map.getSource("composite") && !map.getLayer("beacon-3d-buildings")) {
+          const labelLayer = map.getStyle().layers?.find(
+            (l: any) => l.type === "symbol" && l.layout?.["text-field"],
+          );
+          map.addLayer(
+            {
+              id: "beacon-3d-buildings",
+              source: "composite",
+              "source-layer": "building",
+              filter: ["==", "extrude", "true"],
+              type: "fill-extrusion",
+              minzoom: 14,
+              paint: {
+                "fill-extrusion-color": "#3a4353",
+                "fill-extrusion-height": [
+                  "interpolate", ["linear"], ["zoom"],
+                  14, 0,
+                  15.05, ["get", "height"],
+                ],
+                "fill-extrusion-base": [
+                  "interpolate", ["linear"], ["zoom"],
+                  14, 0,
+                  15.05, ["get", "min_height"],
+                ],
+                "fill-extrusion-opacity": 0.7,
+              },
+            } as any,
+            labelLayer?.id,
+          );
+        }
+      } catch {
+        // If the style doesn't have building extrusions we just skip — the
+        // map still works fine, just without the 3D scenery.
+      }
+
       // Route layer (nav): drawn *underneath* corrected so the fused line
       // sits on top and reads as "where we actually are" vs "where we planned".
       if (showLayers.includes("route")) {
@@ -339,7 +382,8 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
       mapRef.current.easeTo({
         center: [lon, lat],
         bearing: (headingRad * 180) / Math.PI,
-        pitch: 55,               // slight tilt like Google Maps nav mode
+        pitch: 62,               // steep tilt so 3D buildings read as a skyline
+        zoom: Math.max(mapRef.current.getZoom(), 17.5),
         duration: 400,
         essential: true,
       });
@@ -355,6 +399,25 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
       mapRef.current.easeTo({
         center: [lon, lat],
         duration: 500,
+        essential: true,
+      });
+    },
+    fitBounds(a, b) {
+      if (!mapRef.current) return;
+      suppressUserInteractionRef.current++;
+      // Reset pitch/bearing so the preview reads as an overview rather than
+      // continuing whatever nav-mode camera we had. Real navigation kicks
+      // the pitch back up on the next followVehicle().
+      const bounds = new mapboxgl.LngLatBounds(
+        [Math.min(a.lon, b.lon), Math.min(a.lat, b.lat)],
+        [Math.max(a.lon, b.lon), Math.max(a.lat, b.lat)],
+      );
+      mapRef.current.fitBounds(bounds, {
+        padding: { top: 120, bottom: 260, left: 60, right: 60 },
+        pitch: 0,
+        bearing: 0,
+        duration: 700,
+        maxZoom: 15.5,
         essential: true,
       });
     },
@@ -401,8 +464,8 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
       mapRef.current.easeTo({
         center: [last.lon, last.lat],
         bearing: (last.headingRad * 180) / Math.PI,
-        pitch: 55,
-        zoom: Math.max(currentZoom, 17),      // zoom in if we were far out
+        pitch: 62,
+        zoom: Math.max(currentZoom, 17.5),
         duration: 600,
         essential: true,
       });
