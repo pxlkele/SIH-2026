@@ -15,6 +15,11 @@ export interface MapViewHandle {
    *  Used when raw geolocation gives us a fix independently of the fused
    *  stream — no heading, so we can't align the map bearing. */
   panTo(lat: number, lon: number): void;
+  /** Move the camera to a lat/lon *without* touching the vehicle marker.
+   *  Split-screen demo uses this on the raw panel so the "you are here"
+   *  dot stays frozen at the last real GPS fix while the camera still
+   *  follows the corrected position (keeping both panels in sync). */
+  panCameraOnly(lat: number, lon: number, headingRad: number): void;
   /** Fit both points into the current viewport, with a friendly zoom/pitch
    *  reset so the user can preview "this is where you're going". */
   fitBounds(a: { lat: number; lon: number }, b: { lat: number; lon: number }): void;
@@ -408,6 +413,23 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
       mapRef.current.easeTo({
         center: [lon, lat],
         duration: 500,
+        essential: true,
+      });
+    },
+    panCameraOnly(lat, lon, headingRad) {
+      if (!mapRef.current) return;
+      // Remember for recenter() but do NOT move the marker — the caller
+      // wants the vehicle dot to stay where it last was (e.g. frozen at
+      // the last raw GPS fix during an outage in the split-screen demo).
+      lastPosRef.current = { lat, lon, headingRad };
+      if (userInteractingRef.current) return;
+      suppressUserInteractionRef.current++;
+      mapRef.current.easeTo({
+        center: [lon, lat],
+        bearing: (headingRad * 180) / Math.PI,
+        pitch: 62,
+        zoom: Math.max(mapRef.current.getZoom(), 17.5),
+        duration: 400,
         essential: true,
       });
     },

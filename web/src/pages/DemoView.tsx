@@ -46,12 +46,19 @@ export default function DemoView() {
       onFusedResult: sampleActive
         ? (r) => {
             if (r.lat == null || r.lon == null) return;
-            if (r.gps_used) rawMapRef.current?.pushRawGpsPoint(r.lat, r.lon);
+            // Raw panel is DRIVEN ENTIRELY BY REAL GPS. On a fresh fix we
+            // add the dot, move the marker, and pan the camera. During an
+            // outage: nothing. Marker + camera stay frozen at the last
+            // known GPS position — exactly what Google Maps would show.
+            // The two panels visibly diverge as the corrected side keeps
+            // moving. That divergence IS the demo.
+            if (r.gps_used) {
+              rawMapRef.current?.pushRawGpsPoint(r.lat, r.lon);
+              rawMapRef.current?.panTo(r.lat, r.lon);
+            }
+            // Fused panel: continuous update, marker follows corrected pos.
             fusedMapRef.current?.pushFusedPoint(r);
-            // Follow the vehicle on both panels so the drive is visible as
-            // it unfolds — no more static "here's where it ended" view.
             fusedMapRef.current?.followVehicle(r.lat, r.lon, r.heading_rad ?? 0);
-            rawMapRef.current?.followVehicle(r.lat, r.lon, r.heading_rad ?? 0);
           }
         : undefined,
     });
