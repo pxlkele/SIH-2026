@@ -121,14 +121,17 @@ export default function DemoView() {
       <div className="relative min-h-0 flex-1">
         <div className="grid h-full w-full grid-cols-1 grid-rows-2 md:grid-cols-2 md:grid-rows-1">
           <PanelWrap side="left">
-            <MapView ref={rawMapRef} showLayers={["raw"]} syncWith={fusedMapRef} initialStyle="satellite" />
+            {/* No syncWith — DemoView drives both cameras from the fused
+                position in onFusedResult. The sync-poll would silently
+                move the raw marker via panTo(), which breaks the
+                "raw dot is honestly frozen during outage" story. */}
+            <MapView ref={rawMapRef} showLayers={["raw"]} initialStyle="satellite" />
             <PanelLabel accent="raw" title="Raw GPS" subtitle="what Google Maps sees" />
           </PanelWrap>
           <PanelWrap side="right">
             <MapView
               ref={fusedMapRef}
               showLayers={["corrected", "matched", "ellipse"]}
-              syncWith={rawMapRef}
               initialStyle="satellite"
             />
             <PanelLabel accent="live" title="Kalman-fused" subtitle="our system" />
