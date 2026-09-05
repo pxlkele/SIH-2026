@@ -108,6 +108,48 @@ All numbers computed by `model/plot_metrics.py` — charts under `charts/`.
 
 ---
 
+## Business strategy
+
+**Who pays.** India's quick-commerce and last-mile delivery fleets — Swiggy, Zepto, Blinkit, Amazon riders, Dunzo — where a single rider loses GPS position 20–50 times a shift, each drop costing minutes and eventually a failed delivery. Secondary markets with the same pain: ambulance dispatch, cold-chain trucking, mining fleets, ride-share, defence logistics.
+
+**How they pay.** Freemium mobile SDK.
+- **Free tier:** up to 1,000 fleet vehicles per operator — enough to run a pilot end-to-end.
+- **Paid tier:** ~₹40–60 per rider per month above the free cap. That's roughly the cost of one lost delivery per rider — trivially recoverable from a single avoided miss.
+- **Enterprise tier:** custom pricing for defence, ambulance dispatch, and safety-critical customers who need SLAs + audit.
+
+**Realistic ACV.** A 500-rider quick-commerce fleet = ₹2.4–3.6 lakh ARR. Landing the top 5 quick-commerce operators in the top 5 Indian metros = ₹6–10 crore ARR ceiling in year 2. Not a unicorn — real, defensible revenue against a real, priceable pain point.
+
+**Go-to-market.** Direct sales to fleet operators in Bengaluru first (where we validated), then Delhi + Mumbai. Ops-team ROI story is one A4 page: *"You lose ₹X per rider per month to GPS drops. We cost ₹Y. We pay for ourselves at Z drops avoided."* Sign the first fleet, publish the numbers, let inbound do the rest.
+
+**Moat.** Not the algorithm — Kalman filtering is 60 years old. The moat is:
+1. **Distribution** — signing a fleet in a week vs. Ola/Uber's three-month internal alignment.
+2. **India-specific tuning data** — our filter is calibrated on Indian roads, Indian mounting patterns, Indian phones. Every capture compounds this.
+3. **Product execution** — most companies won't ship a mobile app polished enough to trust with rider positioning. We already have.
+
+---
+
+## Scalability
+
+**Zero marginal server cost per user.** The Kalman filter, motion classifier, session log, and map cache all run on the user's phone. Adding the 10,001st user costs us nothing incremental in compute, bandwidth, or storage.
+
+**Traffic economics at 10k monthly active riders:**
+- Map tiles (Mapbox): 10k MAU × ~30 sessions/mo × ~2 tile loads = ~600k loads/mo ≈ **$3k/mo**.
+- Backend (optional cloud path, Aleena's Railway deploy): flat ~$5–20/mo regardless of user count — sessions stream, don't store, and OSRM map-matching is stateless.
+- Vercel edge (frontend): stays in the free / near-free tier through ~100k MAU.
+- **Total marginal infra cost per rider per month: under ₹5.** Pricing at ₹40–60 gives us ~90% gross margin.
+
+**Compute headroom on-device.** Filter step is ~0.03 ms; at 30 Hz that's < 1% of a single mid-range Android CPU core. The classifier adds < 0.1 ms per second. Battery cost is negligible next to Mapbox tile rendering, which is the actual dominant drain.
+
+**Distribution scalability.** Progressive Web App means one URL ships everywhere — Android, iOS, desktop, embedded — with no app-store approval loop for updates. APK path via PWABuilder for fleets that want managed distribution through their own MDM.
+
+**Data & storage.** Sessions log to IndexedDB per device (~50 MB browser quota, ~6,000 sessions before rotation). No central storage means no compliance headache, no data-residency question, and no breach surface. If a fleet wants aggregated analytics, that's an opt-in cloud push handled by Aleena's backend.
+
+**Geographic scalability.** Adding a new city is downloading a Mapbox tile bounding box and running one calibration drive. No infrastructure per city, no local servers, no per-city licensing. Beacon works globally the day we ship it globally.
+
+**Failure modes bounded.** Backend down → app degrades gracefully (still fully functional on-device). Vercel down → cached PWA on user's phone keeps working. Mapbox down → pre-cached tiles + offline preset routes cover the primary use case. There is no single point of failure that takes the product offline.
+
+---
+
 ## Tech stack
 
 **Frontend / mobile app** — `web/`
