@@ -90,6 +90,8 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
   // after every style change (Mapbox wipes custom sources).
   const routeRef = useRef<[number, number][] | null>(null);
   const destMarkerCoordRef = useRef<[number, number] | null>(null);
+  // Last-known ellipse polygon so it survives style toggles too.
+  const ellipseRingRef = useRef<[number, number][] | null>(null);
   const jumpedToFirstRef = useRef(false);
 
   // "User is manually panning / pinching / rotating" flag. When true we stop
@@ -347,6 +349,13 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
           geometry: { type: "LineString", coordinates: routeRef.current },
         });
       }
+      if (ellipseRingRef.current) {
+        const es = map.getSource("ellipse") as mapboxgl.GeoJSONSource | undefined;
+        es?.setData({
+          type: "Feature", properties: {},
+          geometry: { type: "Polygon", coordinates: [ellipseRingRef.current] },
+        });
+      }
       if (destMarkerCoordRef.current && !destMarkerRef.current) {
         const el = document.createElement("div");
         el.style.width = "18px";
@@ -365,8 +374,12 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
     map.on("load", setupLayers);
     // After every setStyle(), Mapbox wipes custom sources+layers.
     // style.load fires when the new style finishes loading — reinstate.
+    // No isStyleLoaded gate: setupLayers is idempotent (all addSource /
+    // addLayer are guarded with getSource / getLayer checks), so calling
+    // it even before every glyph has loaded is safe and guarantees the
+    // path is repainted.
     map.on("style.load", () => {
-      if (map.isStyleLoaded()) setupLayers();
+      setupLayers();
     });
 
     return () => {
@@ -402,6 +415,7 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
 
       if (showLayers.includes("ellipse") && r.cov_ee != null && r.cov_nn != null && r.cov_en != null) {
         const poly = ellipsePolygon(r.lat, r.lon, r.cov_ee, r.cov_en, r.cov_nn);
+        ellipseRingRef.current = poly;
         const es = mapRef.current.getSource("ellipse") as mapboxgl.GeoJSONSource | undefined;
         if (es) es.setData({ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [poly] } });
       }
