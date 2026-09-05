@@ -148,13 +148,46 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
     // Any drag/rotate/zoom via touch or mouse fires `*start` events with
     // `originalEvent` set. Our easeTo/jumpTo calls don't set that field —
     // that's how we distinguish "you moved the map" from "the marker did".
+    //
+    // Google Maps behaviour: after a user gesture, auto-follow disables so
+    // the map doesn't yank back mid-pan. But after ~5 s of no interaction,
+    // follow resumes automatically — otherwise the vehicle marker walks
+    // off the screen and never comes back until the user hits recenter.
+    const AUTO_RECENTER_MS = 5000;
     const onInteractionStart = (e: any) => {
-      if (e?.originalEvent) setUserInteracting(true);
+      if (!e?.originalEvent) return;
+      setUserInteracting(true);
+      if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
+    };
+    const onInteractionEnd = (e: any) => {
+      if (!e?.originalEvent) return;
+      if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = window.setTimeout(() => {
+        setUserInteracting(false);
+        // Immediately snap to the latest known vehicle position so the
+        // user doesn't wait for the next GPS tick to see the resume.
+        const last = lastPosRef.current;
+        if (last && mapRef.current) {
+          suppressUserInteractionRef.current++;
+          mapRef.current.easeTo({
+            center: [last.lon, last.lat],
+            bearing: (last.headingRad * 180) / Math.PI,
+            pitch: 62,
+            zoom: Math.max(mapRef.current.getZoom(), 17.5),
+            duration: 600,
+            essential: true,
+          });
+        }
+      }, AUTO_RECENTER_MS);
     };
     map.on("dragstart", onInteractionStart);
     map.on("rotatestart", onInteractionStart);
     map.on("pitchstart", onInteractionStart);
     map.on("zoomstart", onInteractionStart);
+    map.on("dragend", onInteractionEnd);
+    map.on("rotateend", onInteractionEnd);
+    map.on("pitchend", onInteractionEnd);
+    map.on("zoomend", onInteractionEnd);
 
     // Called after every base-style change to reinstate our custom layers.
     // Idempotent — safe to call multiple times without addSource / addLayer
