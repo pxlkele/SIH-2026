@@ -98,6 +98,7 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
   const userInteractingRef = useRef(false);
   const interactionListenersRef = useRef<Set<(v: boolean) => void>>(new Set());
   const suppressUserInteractionRef = useRef(0);   // ignore camera moves we ourselves triggered
+  const idleTimerRef = useRef<number | null>(null);   // GMaps-style auto-recenter after idle
 
   // Last known vehicle position + heading so recenter() can snap immediately
   // even if no new sample has come in since the user panned away.
@@ -169,11 +170,12 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
         const last = lastPosRef.current;
         if (last && mapRef.current) {
           suppressUserInteractionRef.current++;
+          // Preserve whatever pitch/zoom/bearing the user set — auto-recenter
+          // just re-centres on the vehicle, doesn't force nav-mode camera.
+          // Real followVehicle calls (from the app's raw-fix / fused-stream
+          // effects) will kick pitch/bearing back to nav mode on the next tick.
           mapRef.current.easeTo({
             center: [last.lon, last.lat],
-            bearing: (last.headingRad * 180) / Math.PI,
-            pitch: 62,
-            zoom: Math.max(mapRef.current.getZoom(), 17.5),
             duration: 600,
             essential: true,
           });
@@ -368,6 +370,7 @@ const MapView = forwardRef<MapViewHandle, Props>(function MapView(
     });
 
     return () => {
+      if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
       map.remove();
       mapRef.current = null;
     };
