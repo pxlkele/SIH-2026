@@ -12,6 +12,8 @@ interface Props {
 // match `public/preset_routes.json` so we can serve a precomputed route
 // if the live Directions API is unreachable.
 const PRESETS: { slug: string; label: string; lat: number; lon: number; name: string }[] = [
+  { slug: "mahe",                 label: "MAHE",                 name: "Manipal Academy of Higher Education, Bengaluru", lat: 13.1258, lon: 77.5889 },
+  { slug: "nitte_meenakshi",      label: "Nitte Meenakshi",      name: "Nitte Meenakshi Institute of Technology, Bengaluru", lat: 13.1189, lon: 77.5875 },
   { slug: "phoenix_mall_of_asia", label: "Phoenix Mall of Asia", name: "Phoenix Mall of Asia, Bengaluru", lat: 13.0996, lon: 77.5928 },
   { slug: "mg_road",              label: "MG Road",              name: "MG Road, Bengaluru",              lat: 12.9760, lon: 77.6060 },
   { slug: "hebbal",               label: "Hebbal",               name: "Hebbal, Bengaluru",               lat: 13.0355, lon: 77.5970 },

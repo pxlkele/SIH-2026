@@ -28,6 +28,19 @@ export interface Route {
 }
 
 export async function geocode(query: string, near?: [number, number]): Promise<GeocodeMatch[]> {
+  const results = await geocodeMapbox(query, near);
+  // Mapbox's India POI coverage has real gaps — e.g. universities like
+  // "Manipal Academy of Higher Education" are missing. When it returns
+  // nothing (or one obviously-wrong fallback match), we hit OpenStreetMap
+  // Nominatim as a backstop. Nominatim ToS caps us at 1 req/sec, but our
+  // 250 ms input debounce already keeps us well inside that.
+  if (results.length === 0) {
+    return geocodeNominatim(query, near);
+  }
+  return results;
+}
+
+async function geocodeMapbox(query: string, near?: [number, number]): Promise<GeocodeMatch[]> {
   if (!TOKEN) throw new Error("VITE_MAPBOX_TOKEN not set");
   const params = new URLSearchParams({
     access_token: TOKEN,
@@ -45,6 +58,45 @@ export async function geocode(query: string, near?: [number, number]): Promise<G
     lon: f.center[0] as number,
     lat: f.center[1] as number,
   }));
+}
+
+async function geocodeNominatim(query: string, near?: [number, number]): Promise<GeocodeMatch[]> {
+  const params = new URLSearchParams({
+    q: query,
+    format: "json",
+    countrycodes: "in",
+    limit: "5",
+    addressdetails: "1",
+  });
+  if (near) {
+    // Nominatim viewbox is [minLon, minLat, maxLon, maxLat]. Give ~40 km
+    // radius around `near` so proximity-biased ranking still works.
+    const [lon, lat] = near;
+    const d = 0.4;
+    params.set("viewbox", `${lon - d},${lat + d},${lon + d},${lat - d}`);
+    params.set("bounded", "0");   // still allow results outside, just prefer inside
+  }
+  try {
+    const resp = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
+      headers: { "Accept": "application/json" },
+    });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    return (data as any[]).map((r) => {
+      // Prefer the compact "name" (e.g. "Manipal Academy of Higher Education")
+      // if Nominatim gives us one, else pull the first non-address component
+      // from display_name.
+      const name = r.name || (r.display_name as string).split(",")[0].trim();
+      return {
+        name,
+        address: r.display_name as string,
+        lat: parseFloat(r.lat),
+        lon: parseFloat(r.lon),
+      };
+    });
+  } catch {
+    return [];
+  }
 }
 
 export async function getRoute(
