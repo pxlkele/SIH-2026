@@ -46,19 +46,20 @@ export default function DemoView() {
       onFusedResult: sampleActive
         ? (r) => {
             if (r.lat == null || r.lon == null) return;
-            // Raw panel is DRIVEN ENTIRELY BY REAL GPS. On a fresh fix we
-            // add the dot, move the marker, and pan the camera. During an
-            // outage: nothing. Marker + camera stay frozen at the last
-            // known GPS position — exactly what Google Maps would show.
-            // The two panels visibly diverge as the corrected side keeps
-            // moving. That divergence IS the demo.
-            if (r.gps_used) {
-              rawMapRef.current?.pushRawGpsPoint(r.lat, r.lon);
-              rawMapRef.current?.panTo(r.lat, r.lon);
-            }
-            // Fused panel: continuous update, marker follows corrected pos.
+            // Camera on both panels follows the corrected position so
+            // they always frame the same geographic area at the same
+            // zoom/pitch/bearing. This is framing, not fabricated data.
             fusedMapRef.current?.pushFusedPoint(r);
             fusedMapRef.current?.followVehicle(r.lat, r.lon, r.heading_rad ?? 0);
+            rawMapRef.current?.panCameraOnly(r.lat, r.lon, r.heading_rad ?? 0);
+            // Raw panel DATA (marker + red dots) comes only from real GPS.
+            // On a fresh fix we push the dot + move the marker. During an
+            // outage: nothing. The raw marker visibly falls behind the
+            // Kalman marker in the same shared view — that divergence
+            // between the two blue dots IS the demo.
+            if (r.gps_used) {
+              rawMapRef.current?.pushRawGpsPoint(r.lat, r.lon);
+            }
           }
         : undefined,
     });
