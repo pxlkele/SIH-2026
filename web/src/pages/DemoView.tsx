@@ -218,7 +218,7 @@ function SessionPicker({
         {sessions.length > 0 && <option disabled>──────────</option>}
         {sessions.map((s) => (
           <option key={s.id} value={s.id}>
-            {(s.destinationName ?? "Untitled") + " · " + formatWhen(s.startedAt) +
+            {(s.destinationName ?? "Free drive") + " · " + formatWhen(s.startedAt) +
               " · " + (s.distanceM / 1000).toFixed(1) + " km"}
           </option>
         ))}

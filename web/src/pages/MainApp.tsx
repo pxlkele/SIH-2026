@@ -106,32 +106,34 @@ export default function MainApp() {
     );
   }, [nav.destination]);
 
-  // Session lifecycle: start recorder when a destination is set, end when
-  // it's cleared. Persists automatically to IndexedDB.
+  // Session lifecycle: start a recorder as soon as /app opens, regardless
+  // of whether the user routes anywhere. Ends on unmount. If they tap
+  // Directions mid-session, we tag the existing session with that
+  // destination rather than starting a new one. Every /app visit produces
+  // a Previous Drive entry — that's the whole point of the log.
   useEffect(() => {
-    if (nav.destination && !recorderRef.current) {
-      recorderRef.current = new SessionRecorder({
+    recorderRef.current = new SessionRecorder();
+    console.log("[session] started", recorderRef.current.id);
+    return () => {
+      if (recorderRef.current) {
+        const rec = recorderRef.current;
+        recorderRef.current = null;
+        void rec.end().then((s) => console.log("[session] ended", s.id, `${s.samples.length} samples`));
+      }
+    };
+  }, []);
+
+  // When the user picks a destination mid-session, tag the recorder so
+  // it shows up in Previous Drives with that name.
+  useEffect(() => {
+    if (nav.destination && recorderRef.current) {
+      recorderRef.current.setDestination({
         name: nav.destination.name,
         lat: nav.destination.lat,
         lon: nav.destination.lon,
       });
-      console.log("[session] started", recorderRef.current.id);
-    } else if (!nav.destination && recorderRef.current) {
-      const rec = recorderRef.current;
-      recorderRef.current = null;
-      void rec.end().then((s) => console.log("[session] ended", s.id, `${s.samples.length} samples`));
     }
   }, [nav.destination]);
-
-  // Also end the session cleanly on unmount (user navigates away)
-  useEffect(() => {
-    return () => {
-      if (recorderRef.current) {
-        void recorderRef.current.end();
-        recorderRef.current = null;
-      }
-    };
-  }, []);
 
   // Recenter handler. Immediately snaps to any cached position for
   // instant feedback, then triggers a fresh geolocation request via the

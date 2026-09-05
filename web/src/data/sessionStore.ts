@@ -146,6 +146,14 @@ export class SessionRecorder {
     }
   }
 
+  /** Attach or update the destination for this session (used when the
+   *  user starts recording with no destination — e.g. just walking around
+   *  — and then hits Directions to route somewhere mid-session). */
+  setDestination(destination: { name: string; lat: number; lon: number }): void {
+    this.session.destination = destination;
+    void put({ ...this.session });
+  }
+
   /** Close and persist. Idempotent. */
   async end(): Promise<Session> {
     if (!this.session.endedAt) this.session.endedAt = Date.now();
