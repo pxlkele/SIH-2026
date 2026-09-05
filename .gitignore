@@ -5,3 +5,6 @@
 
 data/real/*_dense.csv
 data/real/output_dense/
+data/raw/
+data/real/*_dense_gap.csv
+data/real/output_2026-09-05*/

@@ -40,15 +40,15 @@ interface RawRow {
   lon: number;
 }
 
-// Where the biggest real GPS gap in web/public/data/drive_raw_gps.csv sits.
-// 6-second dropout from t=1368s to t=1374s. We start ~10 s earlier
-// (~100 m at driving speed) so the viewer sees clean tracking *before*
-// the gap, not a hard cut into the interesting moment.
-const DEFAULT_START_S = 1358;
-// Slow window brackets the actual gap plus a beat on either side so
-// the transition into and out of dead-reckoning is legible.
-const SLOW_WINDOW_START_S = 1367;
-const SLOW_WINDOW_END_S = 1375;
+// The 2026-09-05 capture is a 57-minute / 27.8 km drive with clean GPS
+// throughout. We inject a synthetic 8-second GPS blackout at t=90s
+// (model/inject_gap.py) — the Kalman batch runs on the modified log so
+// the corrected trace during the gap is *real* IMU dead-reckoning, not
+// GPS-aided. Playback starts 10 s earlier so viewers see normal tracking
+// before the gap fires.
+const DEFAULT_START_S = 80;
+const SLOW_WINDOW_START_S = 89;
+const SLOW_WINDOW_END_S = 100;
 const NORMAL_SPEED = 2;                // 2× speed outside the gap window
 const SLOW_SPEED = 0.33;               // ~3× real-time slower during the gap
 

@@ -214,7 +214,7 @@ function SessionPicker({
         className="peer appearance-none rounded-md border border-ink-700 bg-ink-900/85 px-3 py-1.5 pr-8 text-xs font-medium text-ink-200 backdrop-blur transition hover:border-ink-500 focus:outline-none focus:ring-1 focus:ring-accent-bright"
         aria-label="Select replay source"
       >
-        <option value={SAMPLE_SOURCE}>Sample drive · 12.3 km · Bengaluru</option>
+        <option value={SAMPLE_SOURCE}>Sample drive · 27.8 km · Bengaluru</option>
         {sessions.length > 0 && <option disabled>──────────</option>}
         {sessions.map((s) => (
           <option key={s.id} value={s.id}>
